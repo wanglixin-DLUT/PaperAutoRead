@@ -906,7 +906,7 @@ with gr.Blocks(title="AI Rebuttal Assistant") as demo:
 
             After all questions are processed, you can generate the referenced final rebuttal document.
             
-            This may take about 15 minutes, please be patient...
+            This may take about 15 minutes (use gpu) or up to 1 hour (CPU), please be patient...
             """
         )
         

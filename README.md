@@ -100,13 +100,16 @@ ZHIPUAI_API_KEY=<your_zhipuai_api_key>
 
 > **Note (Windows):** On Windows, you may need to run the terminal as Administrator for the first run, as the PDF parser (Docling) needs to download AI models that require symlink permissions. Alternatively, you can enable [Developer Mode](https://learn.microsoft.com/en-us/windows/apps/get-started/enable-your-device-for-development).
 
+> **Performance Note:** Literature analysis involves parsing multiple external papers using **Docling**, which is computationally intensive, we **strongly recommend using GPU acceleration**. 
+> - **CPU Mode:** Processing a full workflow may take up to **1 hour**.
+> - **GPU Mode (CUDA):** Processing typically takes only about **15 minutes**.
+
+
 Launch the interactive web interface:
 
 ```bash
 python app.py --port 8080
 ```
-
-
 
 **With GPU acceleration (for PDF parsing):**
 ```bash
