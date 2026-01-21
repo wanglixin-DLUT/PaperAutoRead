@@ -1,10 +1,10 @@
 # RebuttalAgent: AI-Powered Academic Paper Rebuttal Assistant
 
 <p align="center">
-  <a href="https://arxiv.org/abs/2601.xxxxx" target="_blank"><img src="https://img.shields.io/badge/arXiv-2601.xxxxx-red"></a>
+  <a href="https://arxiv.org/abs/2601.14171" target="_blank"><img src="https://img.shields.io/badge/arXiv-2601.14171-red"></a>
   <a href='https://mqleet.github.io/Paper2Rebuttal_ProjectPage/'><img src='https://img.shields.io/badge/Project-Page-blue'></a>
   <a href="https://huggingface.co/spaces/Mqleet/RebuttalAgent" target="_blank"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-red%22"></a>
-  <a href="https://huggingface.co/papers/2601.xxxxx" target="_blank"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Daily Papers-red"></a>
+  <a href="https://huggingface.co/papers/2601.14171" target="_blank"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Daily Papers-red"></a>
 
 </p >
 
@@ -12,6 +12,19 @@
 <p align="center">
 <strong><big>If you find our work useful, please consider giving us a star 🌟</big></strong>
 </p>
+
+
+## 🔥 News
+- [2026.01.21] We release the [paper](https://arxiv.org/abs/2601.14171), code and [project pages](https://mqleet.github.io/Paper2Rebuttal_ProjectPage/)
+
+
+## :memo: TODO
+
+- [x] Code Release
+- [x] Paper Release
+- [ ] Datasets
+- [x] Huggingface Demo
+
 
 ## 🔎 Overview
 
@@ -132,7 +145,15 @@ The system uses a multi-agent pipeline:
 If you find RebuttalAgent useful for your research, please consider citing:
 
 ```bibtex
-
+@misc{ma2026paper2rebuttal,
+      title={Paper2Rebuttal: A Multi-Agent Framework for Transparent Author Response Assistance}, 
+      author={Qianli Ma and Chang Guo and Zhiheng Tian and Siyu Wang and Jipeng Xiao and Yuanhao Yue and Zhipeng Zhang},
+      year={2026},
+      eprint={2601.14171},
+      archivePrefix={arXiv},
+      primaryClass={cs.AI},
+      url={https://arxiv.org/abs/2601.14171}, 
+}
 ```
 
 ## ❤️ Acknowledgement
