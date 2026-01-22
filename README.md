@@ -116,7 +116,7 @@ python app.py --port 8080
 python app.py --device cuda --port 8080
 ```
 
-> **Note:** The first run may be slower as Docling needs to download AI models from Hugging Face. Subsequent runs will be much faster.
+> 🤯 **Note:** The first run may be slower as Docling needs to download AI models from Hugging Face. Subsequent runs will be much faster.
 
 ### Workflow
 
