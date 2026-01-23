@@ -1,5 +1,6 @@
 import os
 import json
+import time
 from datetime import datetime
 from typing import Optional, Tuple, Dict, List
 
@@ -107,12 +108,16 @@ class LLMClient:
         token_tracker: Optional[TokenUsageTracker] = None,
         site_url: Optional[str] = None,
         site_name: Optional[str] = None,
+        max_retries: int = 3,
+        retry_delay: float = 2.0,
     ) -> None:
         self.provider = provider.lower()
         self.default_model = default_model
         self.request_timeout = request_timeout
         self.token_tracker = token_tracker
         self.current_agent_name = "unknown"
+        self.max_retries = max_retries
+        self.retry_delay = retry_delay
         
         # Get provider config
         config = PROVIDER_CONFIGS.get(self.provider, PROVIDER_CONFIGS["openrouter"])
@@ -171,23 +176,39 @@ class LLMClient:
 
         final_text = ""
         reasoning_text = ""
+        last_error = None
         
-        try:
-            if self.provider == "gemini":
-                # Use native Gemini SDK
-                final_text, reasoning_text = self._generate_gemini(
-                    instructions, input_text, model_name, temperature
-                )
-            else:
-                # Use OpenAI-compatible API
-                final_text, reasoning_text = self._generate_openai_compatible(
-                    instructions, input_text, model_name, temperature
-                )
-        except Exception as e:
-            print(f"[{self.provider.upper()} Error] {type(e).__name__}: {e}")
-            final_text = f"Error calling {self.provider}: {str(e)}"
-            
-        return final_text or "", reasoning_text or ""
+        for attempt in range(self.max_retries + 1):
+            try:
+                if self.provider == "gemini":
+                    # Use native Gemini SDK
+                    final_text, reasoning_text = self._generate_gemini(
+                        instructions, input_text, model_name, temperature
+                    )
+                else:
+                    # Use OpenAI-compatible API
+                    final_text, reasoning_text = self._generate_openai_compatible(
+                        instructions, input_text, model_name, temperature
+                    )
+                
+
+                rate_limit_keywords = ["并发", "rate limit", "too many requests", "quota exceeded", "限流"]
+                if any(keyword in final_text.lower() for keyword in rate_limit_keywords):
+                    raise Exception(f"Rate limit detected in response: {final_text[:100]}...")
+                
+                return final_text or "", reasoning_text or ""
+                
+            except Exception as e:
+                last_error = e
+                if attempt < self.max_retries:
+                    wait_time = self.retry_delay * (2 ** attempt)  # Exponential backoff: 2s, 4s, 8s
+                    print(f"[Retry] {self.current_agent_name} attempt {attempt + 1}/{self.max_retries} failed: {type(e).__name__}")
+                    print(f"[Retry] Waiting {wait_time:.1f}s before retry...")
+                    time.sleep(wait_time)
+                else:
+                    print(f"[{self.provider.upper()} Error] All {self.max_retries + 1} attempts failed: {type(e).__name__}: {e}")
+        
+        return f"Error calling {self.provider} after {self.max_retries + 1} attempts: {str(last_error)}", ""
     
     def _generate_gemini(
         self,

@@ -84,11 +84,28 @@ def save_uploaded_files(pdf_file, review_file, session_id: str) -> Tuple[str, st
     if rev_type is None:
         raise ValueError("Review file upload failed or incorrect format")
     review_text = ""
+    
+
+    def decode_with_fallback(data: bytes) -> str:
+        """Try multiple encodings to decode bytes, with UTF-8 as primary."""
+        encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin-1']
+        for enc in encodings:
+            try:
+                return data.decode(enc)
+            except (UnicodeDecodeError, LookupError):
+                continue
+
+        return data.decode('utf-8', errors='replace')
+    
     if rev_type == "path":
-        with open(rev_data, "r", encoding="utf-8") as f:
-            review_text = f.read()
+        with open(rev_data, "rb") as f:
+            raw_bytes = f.read()
+        review_text = decode_with_fallback(raw_bytes)
     elif rev_type in ("bytes", "fileobj"):
-        review_text = rev_data.decode("utf-8") if isinstance(rev_data, bytes) else rev_data.decode("utf-8")
+        if isinstance(rev_data, bytes):
+            review_text = decode_with_fallback(rev_data)
+        else:
+            review_text = decode_with_fallback(rev_data)
     
     with open(review_save_path, "w", encoding="utf-8") as f:
         f.write(review_text)
@@ -337,6 +354,7 @@ def run_initial_analysis(session_state):
 def regenerate_strategy(feedback_text, session_state):
     if not session_state:
         return (
+            gr.update(),
             gr.update(),
             gr.update(),
             gr.update(),

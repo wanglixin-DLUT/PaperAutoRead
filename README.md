@@ -56,6 +56,7 @@
 ```bash
 conda create -n rebuttal python=3.10
 conda activate rebuttal
+# if you want to run on GPU , please firstly install the GPU version of PyTorch (select the one based on your CUDA version)
 pip install -r requirements.txt
 ```
 
@@ -95,6 +96,8 @@ GEMINI_API_KEY=<your_gemini_api_key>
 # ZhiPu (GLM)
 ZHIPUAI_API_KEY=<your_zhipuai_api_key>
 ```
+
+**You can alse edit the base_url in .env**
 
 > **Note:** Only configure the provider you plan to use.
 
