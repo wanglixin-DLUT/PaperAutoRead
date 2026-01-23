@@ -6,6 +6,7 @@
   <a href="https://huggingface.co/spaces/Mqleet/RebuttalAgent" target="_blank"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Space-red%22"></a>
   <a href="https://huggingface.co/papers/2601.14171" target="_blank"><img src="https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Daily Papers-red"></a>
 
+
 </p >
 
 
@@ -16,6 +17,7 @@
 
 ## 🔥 News
 - [2026.01.21] We release the [paper](https://arxiv.org/abs/2601.14171), code and [project pages](https://mqleet.github.io/Paper2Rebuttal_ProjectPage/)
+- [2026.01.23] We create the [WeChat Group](assets/wechat_group.png), welcome to join in and discuss the issues.
 
 
 ## :memo: TODO
@@ -175,3 +177,7 @@ Thanks to the contributors for their great work!
 
 ## 📄 License
 This project is licensed under the MIT License.
+
+## 🤝 Community
+🥳 Welcome to join our wechat group if you have issues, or want to discuss new ideas!
+![WeChat Group](assets/wechat_group.png)
