@@ -44,9 +44,9 @@
 
 
 
-**We recommend to use [Hugginface Space](https://huggingface.co/spaces/Mqleet/RebuttalAgent) to have a quick try!**
+**We recommend to deploy our work locally, following the instructions below. You can also use [Hugginface Space](https://huggingface.co/spaces/Mqleet/RebuttalAgent) to have a try, but it may be very slow，taking up to an hour to finish**
 
-If you want to deploy our work locally, following the instructions below:
+
 
 ## 🛠️ Installation
 
