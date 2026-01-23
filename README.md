@@ -122,7 +122,7 @@ python app.py --device cuda --port 8080
 
 ### Workflow
 
-1. **Upload Files**: Upload your paper PDF and review text file
+1. **Upload Files**: Upload your paper PDF and review text file (raw document including all reviewers' comments and their IDs)
 2. **Initial Analysis**: The system parses your paper and extracts reviewer issues
 3. **Strategy Review**: For each issue, review the AI-generated rebuttal strategy
 4. **Provide Feedback**: Refine strategies through natural language feedback

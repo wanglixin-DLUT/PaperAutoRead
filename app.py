@@ -778,7 +778,7 @@ with gr.Blocks(title="AI Rebuttal Assistant") as demo:
         # AI Rebuttal Assistant
         
         **Workflow usage process:**
-        - **Upload** - Upload your paper PDF and the review file (support .txt or .md format)
+        - **Upload** - Upload your paper PDF and the review file (Supports .txt or .md format, please input the original document containing all reviewers' comments, including reviewers' IDs ; there is no need to split them manually)
         - **Analysis** - The system will automatically analyze your paper and extract questions from the review
         - **Review Strategy** - For each question, view the AI-generated rebuttal strategy and to-do list and referenced response snippets
         - **Refinement** - Enter your feedback and click "Regenerate" to refine the strategy
