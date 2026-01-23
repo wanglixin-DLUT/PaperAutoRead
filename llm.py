@@ -8,26 +8,32 @@ PROVIDER_CONFIGS: Dict[str, Dict[str, str]] = {
     "openrouter": {
         "base_url": "https://openrouter.ai/api/v1",
         "env_var": "OPENROUTER_API_KEY",
+        "base_url_env_var": "OPENROUTER_API_BASE_URL",
     },
     "qwen": {
         "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
         "env_var": "QWEN_API_KEY",
+        "base_url_env_var": "QWEN_API_BASE_URL",
     },
     "deepseek": {
         "base_url": "https://api.deepseek.com",
         "env_var": "DEEPSEEK_API_KEY",
+        "base_url_env_var": "DEEPSEEK_API_BASE_URL",
     },
     "openai": {
         "base_url": "https://api.openai.com/v1",
         "env_var": "OPENAI_API_KEY",
+        "base_url_env_var": "OPENAI_API_BASE_URL",
     },
     "gemini": {
         "base_url": None,  # Uses native SDK
         "env_var": "GEMINI_API_KEY",
+        "base_url_env_var": "GEMINI_API_BASE_URL",
     },
     "zhipu": {
         "base_url": "https://open.bigmodel.cn/api/paas/v4/",
         "env_var": "ZHIPUAI_API_KEY",
+        "base_url_env_var": "ZHIPUAI_API_BASE_URL",
     },
 }
 
@@ -139,8 +145,10 @@ class LLMClient:
                 headers=extra_headers
             )
             
-            # Use provided base_url or default from config
-            effective_base_url = base_url or config["base_url"]
+
+            base_url_env_var = config.get("base_url_env_var")
+            env_base_url = os.environ.get(base_url_env_var) if base_url_env_var else None
+            effective_base_url = base_url or env_base_url or config["base_url"]
             
             self._client = OpenAI(
                 base_url=effective_base_url,
