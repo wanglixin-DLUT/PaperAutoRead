@@ -857,6 +857,40 @@ class RebuttalService:
     def get_session(self, session_id: str) -> Optional[SessionState]:
         return self.sessions.get(session_id)
     
+    def list_active_sessions(self) -> List[Dict]:
+
+        sessions_info = []
+        with self._lock:
+            for session_id, session in self.sessions.items():
+                # Calculate progress
+                total_questions = len(session.questions)
+                completed_questions = sum(1 for q in session.questions if q.is_satisfied)
+                processed_questions = sum(1 for q in session.questions if q.agent7_output)
+                
+                # Determine status text
+                if session.overall_status == ProcessStatus.ERROR:
+                    status_text = "❌ Error"
+                elif total_questions == 0:
+                    status_text = "⏳ Initializing..."
+                elif completed_questions == total_questions:
+                    status_text = "✅ Completed"
+                elif processed_questions > 0:
+                    status_text = f"📝 Reviewing ({processed_questions}/{total_questions})"
+                else:
+                    status_text = "⏳ Processing..."
+                
+                sessions_info.append({
+                    "session_id": session_id,
+                    "status": status_text,
+                    "total_questions": total_questions,
+                    "completed_questions": completed_questions,
+                    "processed_questions": processed_questions,
+                    "current_idx": session.current_question_idx,
+                    "display_text": f"[{session_id}] {status_text} - {processed_questions}/{total_questions} questions"
+                })
+        
+        return sessions_info
+    
     def run_initial_analysis(
         self, 
         session_id: str, 

@@ -612,6 +612,154 @@ def restart_session():
     )
 
 
+def get_active_sessions_choices():
+    """Get choices for session dropdown"""
+    sessions = rebuttal_service.list_active_sessions()
+    if not sessions:
+        return []
+    return [(s["display_text"], s["session_id"]) for s in sessions]
+
+
+def refresh_session_list():
+    """Refresh the session dropdown choices"""
+    choices = get_active_sessions_choices()
+    if not choices:
+        return gr.update(choices=[], value=None), "📭 No active sessions found"
+    return gr.update(choices=choices, value=choices[0][1]), f"🔄 Found {len(choices)} active session(s)"
+
+
+def resume_session(session_id_to_resume, provider_choice, api_key):
+    """Resume an existing session after page refresh"""
+    if not session_id_to_resume:
+        return (
+            gr.update(),  # upload_col
+            gr.update(),  # loading_col
+            gr.update(),  # interact_col
+            gr.update(),  # result_col
+            None,         # session_state
+            "⚠️ Please select a session to resume!",  # upload_status
+            gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
+            gr.update(), gr.update(), gr.update(),
+            gr.update(),  # confirm_btn
+        )
+    
+    if not api_key or not api_key.strip():
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            None,
+            "⚠️ Please enter API Key before resuming!",
+            gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
+            gr.update(), gr.update(), gr.update(),
+            gr.update(),
+        )
+    
+    try:
+        # Initialize LLM client with provided credentials
+        provider_config = PROVIDER_CONFIGS.get(provider_choice, PROVIDER_CONFIGS["OpenRouter"])
+        provider_key = provider_config["provider_key"]
+        model_choices = MODEL_CHOICES_BY_PROVIDER.get(provider_choice, MODEL_CHOICES_BY_PROVIDER["OpenRouter"])
+        default_model = list(model_choices.values())[0]
+        init_llm_client(api_key=api_key.strip(), provider=provider_key, model=default_model)
+        
+        session = rebuttal_service.get_session(session_id_to_resume)
+        if not session:
+            return (
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                gr.update(),
+                None,
+                f"❌ Session {session_id_to_resume} not found!",
+                gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
+                gr.update(), gr.update(), gr.update(),
+                gr.update(),
+            )
+        
+        # Check if session has questions processed
+        if not session.questions:
+            return (
+                gr.update(),
+                gr.update(visible=True),  # Show loading page
+                gr.update(),
+                gr.update(),
+                {"session_id": session_id_to_resume, "current_idx": 0},
+                "📤 Session found but still processing. Please wait...",
+                gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
+                gr.update(), gr.update(), gr.update(),
+                gr.update(),
+            )
+        
+        # Find first unprocessed or unsatisfied question
+        resume_idx = 0
+        for i, q in enumerate(session.questions):
+            if not q.is_satisfied and q.agent7_output:
+                resume_idx = i
+                break
+            elif q.is_satisfied:
+                resume_idx = i + 1
+        
+        # If all questions are satisfied, go to result page
+        if resume_idx >= len(session.questions):
+            strategy_summary = generate_strategy_summary(session)
+            final_text = session.final_rebuttal or rebuttal_service.generate_final_rebuttal(session_id_to_resume)
+            
+            return (
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=False),
+                gr.update(visible=True),  # Show result page
+                {"session_id": session_id_to_resume, "current_idx": resume_idx - 1},
+                "",
+                gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
+                gr.update(), gr.update(), gr.update(),
+                gr.update(),
+            )
+        
+        # Resume to the question review page
+        q_state = session.questions[resume_idx]
+        history_text = format_feedback_history(q_state.feedback_history)
+        strategy_content = q_state.agent7_output or ""
+        
+        is_last_question = (resume_idx + 1) == len(session.questions)
+        btn_text = "📝 Generate Final Rebuttal" if is_last_question else "✅ Satisfied, Next Question"
+        
+        return (
+            gr.update(visible=False),  # upload_col
+            gr.update(visible=False),  # loading_col
+            gr.update(visible=True),   # interact_col
+            gr.update(visible=False),  # result_col
+            {"session_id": session_id_to_resume, "current_idx": resume_idx},  # session_state
+            "",  # upload_status
+            f"### Question {resume_idx + 1} / {len(session.questions)} (Resumed)",  # progress_info
+            q_state.question_text,  # question_display
+            strategy_content,  # strategy_preview
+            strategy_content,  # strategy_edit
+            "",  # feedback_input
+            f"📝 Revisions have been revised {q_state.revision_count} times",  # revision_info
+            gr.update(interactive=True),  # regenerate_btn
+            history_text,  # feedback_history_display
+            gr.update(value=btn_text),  # confirm_btn
+        )
+        
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            None,
+            f"❌ Failed to resume session: {str(e)}",
+            gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
+            gr.update(), gr.update(), gr.update(),
+            gr.update(),
+        )
+
+
 def poll_logs(session_state):
     """Poll logs for real-time updates on the loading page"""
     if not session_state:
@@ -906,6 +1054,35 @@ with gr.Blocks(title="AI Rebuttal Assistant") as demo:
             variant="primary",
             size="lg",
         )
+        
+        gr.Markdown("---")
+        
+        with gr.Group():
+            gr.Markdown("### 🔄 Resume Previous Session")
+            gr.Markdown(
+                "*If you refreshed the page during processing, you can resume your session here. "
+                "Make sure to enter your API Key above first.*"
+            )
+            with gr.Row():
+                resume_session_dropdown = gr.Dropdown(
+                    label="Select Session to Resume",
+                    choices=[],
+                    value=None,
+                    interactive=True,
+                    scale=3,
+                )
+                refresh_sessions_btn = gr.Button(
+                    "🔄 Refresh List",
+                    variant="secondary",
+                    size="sm",
+                    scale=1,
+                )
+            resume_status = gr.Markdown("")
+            resume_btn = gr.Button(
+                "▶️ Resume Selected Session",
+                variant="secondary",
+                size="lg",
+            )
     
     with gr.Column(visible=False) as loading_col:
         gr.Markdown("## ⏳ Analyzing...")
@@ -1120,7 +1297,24 @@ with gr.Blocks(title="AI Rebuttal Assistant") as demo:
             confirm_btn,
         ],
     )
+
+    refresh_sessions_btn.click(
+        fn=refresh_session_list,
+        inputs=[],
+        outputs=[resume_session_dropdown, resume_status],
+    )
     
+    resume_btn.click(
+        fn=resume_session,
+        inputs=[resume_session_dropdown, provider_choice, api_key_input],
+        outputs=[
+            upload_col, loading_col, interact_col, result_col,
+            session_state, upload_status,
+            progress_info, question_display, strategy_preview, strategy_edit, feedback_input,
+            revision_info, regenerate_btn, feedback_history_display,
+            confirm_btn,
+        ],
+    )
 
     log_timer.tick(
         fn=poll_logs,

@@ -123,6 +123,15 @@ python app.py --device cuda --port 8080
 
 > 🤯 **Note:** The first run may be slower as Docling needs to download AI models from Hugging Face. Subsequent runs will be much faster.
 
+### 🔄 Session Recovery
+If your browser page is accidentally refreshed during processing, you can resume your session:
+1. Enter your API Key in the configuration section
+2. Click **🔄 Refresh List** to see active sessions
+3. Select your session from the dropdown
+4. Click **▶️ Resume Selected Session**
+> ⚠️ Note: This only works if the server is still running. Server restart will clear all session data.
+
+
 ### Workflow
 
 1. **Upload Files**: Upload your paper PDF and review text file (raw document including all reviewers' comments and their IDs)
