@@ -886,6 +886,30 @@ class RebuttalService:
         elif q_state.agent7_output:
             q_state.status = ProcessStatus.WAITING_FEEDBACK
 
+    def _extract_paper_summary_from_agent1_output(self, agent1_output_text: str) -> str:
+
+        if not agent1_output_text:
+            return ""
+        
+        # Find the FINAL TEXT section
+        final_text_marker = "=== FINAL TEXT ==="
+        thinking_marker = "=== THINKING ==="
+        
+        start_idx = agent1_output_text.find(final_text_marker)
+        if start_idx == -1:
+            # If no marker, assume the whole text is the summary
+            return agent1_output_text.strip()
+        
+        # Skip past the marker
+        start_idx += len(final_text_marker)
+        
+        # Find the end (either THINKING marker or end of text)
+        end_idx = agent1_output_text.find(thinking_marker, start_idx)
+        if end_idx == -1:
+            end_idx = len(agent1_output_text)
+        
+        return agent1_output_text[start_idx:end_idx].strip()
+
     def _load_session_from_dir(self, session_id: str, session_dir: str) -> Optional[SessionState]:
         if not os.path.isdir(session_dir):
             return None
@@ -926,9 +950,33 @@ class RebuttalService:
             os.path.join(session_dir, "review.txt"),
         ])
 
+        # Restore paper_summary: first try from session_summary.json, then from agent1_output.txt
+        paper_summary_restored = False
+        if summary_data and summary_data.get("paper_summary"):
+            session.paper_summary = summary_data.get("paper_summary", "")
+            paper_summary_restored = True
+        
+        if not paper_summary_restored:
+            agent1_output_path = os.path.join(logs_dir, "agent1_output.txt")
+            if os.path.exists(agent1_output_path):
+                agent1_raw = self._read_text_safe(agent1_output_path)
+                session.paper_summary = self._extract_paper_summary_from_agent1_output(agent1_raw)
+                if session.paper_summary:
+                    paper_summary_restored = True
+                    print(f"[RESTORE] paper_summary restored from agent1_output.txt ({len(session.paper_summary)} chars)")
+
         final_rebuttal_path = os.path.join(logs_dir, "final_rebuttal.txt")
         if os.path.exists(final_rebuttal_path):
             session.final_rebuttal = self._read_text_safe(final_rebuttal_path)
+
+        # Build a map of question_id -> reference_paper_summary from summary_data
+        ref_summary_map: Dict[int, str] = {}
+        if summary_data and isinstance(summary_data.get("questions"), list):
+            for q in summary_data.get("questions", []):
+                qid = int(q.get("question_id", 0) or 0)
+                ref_summary = q.get("reference_paper_summary", "") or ""
+                if qid > 0 and ref_summary:
+                    ref_summary_map[qid] = ref_summary
 
         questions: List[QuestionState] = []
         if summary_data and isinstance(summary_data.get("questions"), list):
@@ -941,6 +989,7 @@ class RebuttalService:
                 )
                 q_state.agent7_output = q.get("final_strategy", "") or ""
                 q_state.feedback_history = q.get("feedback_history", []) or []
+                q_state.reference_paper_summary = q.get("reference_paper_summary", "") or ""
                 if q_state.question_id > 0:
                     questions.append(q_state)
 
@@ -950,10 +999,17 @@ class RebuttalService:
             parsed_questions = self._parse_questions_from_logs(logs_dir)
             if parsed_questions:
                 for idx, text in enumerate(parsed_questions, start=1):
-                    questions.append(QuestionState(question_id=idx, question_text=text))
+                    q_state = QuestionState(question_id=idx, question_text=text)
+                    # Try to restore reference_paper_summary from map
+                    if idx in ref_summary_map:
+                        q_state.reference_paper_summary = ref_summary_map[idx]
+                    questions.append(q_state)
             else:
                 for qid in self._collect_question_ids_from_logs(logs_dir):
-                    questions.append(QuestionState(question_id=qid, question_text=f"Question {qid} (restored)"))
+                    q_state = QuestionState(question_id=qid, question_text=f"Question {qid} (restored)")
+                    if qid in ref_summary_map:
+                        q_state.reference_paper_summary = ref_summary_map[qid]
+                    questions.append(q_state)
 
         session.questions = questions
         for q_state in session.questions:
@@ -1080,6 +1136,7 @@ class RebuttalService:
                 "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
                 "paper_path": session.paper_file_path,
                 "review_path": session.review_file_path,
+                "paper_summary": session.paper_summary,  # Persist paper_summary for restoration
                 "total_questions": len(session.questions),
                 "questions": []
             }
@@ -1091,6 +1148,7 @@ class RebuttalService:
                     "revision_count": q.revision_count,
                     "is_satisfied": q.is_satisfied,
                     "final_strategy": q.agent7_output,
+                    "reference_paper_summary": q.reference_paper_summary,  # Persist for restoration
                     "feedback_history": [
                         {
                             "feedback": h.get("feedback", ""),
@@ -1235,6 +1293,9 @@ class RebuttalService:
             session.current_question_idx = 0
             
             update_progress(f"Analysis complete! Extracted {len(questions)} questions.")
+            
+            # Save session summary after initial analysis to persist paper_summary and questions
+            self._save_session_summary(session_id)
             
         except Exception as e:
             session.overall_status = ProcessStatus.ERROR
@@ -1410,6 +1471,9 @@ class RebuttalService:
             
             q_state.status = ProcessStatus.WAITING_FEEDBACK
             update_progress("Complete, waiting for your feedback...")
+            
+            # Save session summary after each question is processed to preserve progress
+            self._save_session_summary(session_id)
             
         except Exception as e:
             q_state.status = ProcessStatus.ERROR
