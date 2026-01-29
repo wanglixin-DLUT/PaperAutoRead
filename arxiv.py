@@ -1,5 +1,6 @@
 import urllib.parse
 import urllib.request
+import ssl
 import xml.etree.ElementTree as ET
 import os
 import re
@@ -19,7 +20,22 @@ except Exception:
     pass
 
 
-DIRECT_OPENER = urllib.request.build_opener()
+def _build_https_opener() -> urllib.request.OpenerDirector:
+    no_verify = os.environ.get("ARXIV_SSL_NO_VERIFY", "").strip().lower() in {"1", "true", "yes"}
+    if no_verify:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+    try:
+        import certifi
+        context = ssl.create_default_context(cafile=certifi.where())
+        return urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+    except Exception:
+        return urllib.request.build_opener()
+
+
+DIRECT_OPENER = _build_https_opener()
 
 
 ARXIV_API = "https://export.arxiv.org/api/query"

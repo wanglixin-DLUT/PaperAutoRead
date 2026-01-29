@@ -30,3 +30,9 @@ arxiv_papers/
 arxiv_papers_md/
 sessions/
 run_gradio_*
+
+papers_test/
+*.pdf
+
+papers_md/
+*.md

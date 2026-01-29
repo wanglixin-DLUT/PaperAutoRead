@@ -1,6 +1,8 @@
 import os
 import json
 import time
+import threading
+from queue import Queue
 from datetime import datetime
 from typing import Optional, Tuple, Dict, List
 
@@ -346,4 +348,143 @@ class LLMClient:
             )
 
         return final_text, ""
+
+
+class LLMRequest:
+    def __init__(
+        self,
+        client: "LLMClient",
+        instructions: Optional[str],
+        input_text: str,
+        model: Optional[str],
+        enable_reasoning: bool,
+        temperature: float,
+        agent_name: Optional[str],
+    ):
+        self.client = client
+        self.instructions = instructions
+        self.input_text = input_text
+        self.model = model
+        self.enable_reasoning = enable_reasoning
+        self.temperature = temperature
+        self.agent_name = agent_name
+        self.rate_limit_retries = 0
+        self._event = threading.Event()
+        self._result: Optional[Tuple[str, str]] = None
+        self._error: Optional[str] = None
+
+    def set_result(self, result: Tuple[str, str]):
+        self._result = result
+        self._event.set()
+
+    def set_error(self, error: str):
+        self._error = error
+        self._event.set()
+
+    def wait(self, timeout: Optional[float] = None) -> Tuple[Optional[Tuple[str, str]], Optional[str]]:
+        self._event.wait(timeout)
+        return self._result, self._error
+
+
+class LLMRequestQueue:
+    def __init__(
+        self,
+        max_concurrent: int = 5,
+        rate_limit_retries: int = 5,
+        rate_limit_wait: float = 2.0,
+    ) -> None:
+        self.max_concurrent = max_concurrent
+        self.rate_limit_retries = rate_limit_retries
+        self.rate_limit_wait = rate_limit_wait
+        self._queue: Queue[LLMRequest] = Queue()
+        self._shutdown = threading.Event()
+        self._workers: List[threading.Thread] = []
+
+        for i in range(self.max_concurrent):
+            t = threading.Thread(target=self._worker, name=f"llm-worker-{i}", daemon=True)
+            t.start()
+            self._workers.append(t)
+
+    def submit(
+        self,
+        client: "LLMClient",
+        instructions: Optional[str],
+        input_text: str,
+        model: Optional[str] = None,
+        enable_reasoning: bool = True,
+        temperature: float = 0.6,
+        agent_name: Optional[str] = None,
+    ) -> LLMRequest:
+        request = LLMRequest(
+            client=client,
+            instructions=instructions,
+            input_text=input_text,
+            model=model,
+            enable_reasoning=enable_reasoning,
+            temperature=temperature,
+            agent_name=agent_name,
+        )
+        self._queue.put(request)
+        return request
+
+    def _is_rate_limit_error(self, text: str, error: Optional[Exception]) -> bool:
+        message = f"{text} {error or ''}".lower()
+        keywords = [
+            "429",
+            "rate limit",
+            "too many requests",
+            "quota",
+            "limit",
+            "限流",
+            "并发",
+        ]
+        return any(keyword in message for keyword in keywords)
+
+    def _handle_rate_limit(self, request: LLMRequest, error_text: str):
+        if request.rate_limit_retries < self.rate_limit_retries:
+            request.rate_limit_retries += 1
+            time.sleep(self.rate_limit_wait)
+            self._queue.put(request)
+        else:
+            request.set_error(f"Rate limit retries exceeded: {error_text}")
+
+    def _worker(self):
+        while not self._shutdown.is_set():
+            request = self._queue.get()
+            if request is None:
+                self._queue.task_done()
+                continue
+            try:
+                result = request.client.generate(
+                    instructions=request.instructions,
+                    input_text=request.input_text,
+                    model=request.model,
+                    enable_reasoning=request.enable_reasoning,
+                    temperature=request.temperature,
+                    agent_name=request.agent_name,
+                )
+                text = result[0] if result else ""
+                if self._is_rate_limit_error(text, None):
+                    self._handle_rate_limit(request, text)
+                else:
+                    request.set_result(result)
+            except Exception as e:
+                if self._is_rate_limit_error("", e):
+                    self._handle_rate_limit(request, str(e))
+                else:
+                    request.set_error(str(e))
+            finally:
+                self._queue.task_done()
+
+
+_llm_request_queue: Optional[LLMRequestQueue] = None
+_llm_request_queue_lock = threading.Lock()
+
+
+def get_llm_request_queue(max_concurrent: int = 5) -> LLMRequestQueue:
+    global _llm_request_queue
+    with _llm_request_queue_lock:
+        if _llm_request_queue is None:
+            _llm_request_queue = LLMRequestQueue(max_concurrent=max_concurrent)
+        return _llm_request_queue
 

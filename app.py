@@ -46,6 +46,7 @@ from rebuttal_service import (
     LogCollector,
 )
 from paper_reading_service import paper_reading_service
+from paper_search_service import paper_search_service
 
 
 _CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -163,6 +164,42 @@ def save_paper_reading_files(pdf_file, research_field_file, session_id: str) -> 
     return pdf_save_path, research_field_save_path
 
 
+def save_research_md_file(research_file, session_id: str) -> Tuple[str, str]:
+    """保存按领域筛查流程的研究内容文件"""
+    session_dir = os.path.join(SAVE_DIR, session_id)
+    os.makedirs(session_dir, exist_ok=True)
+    research_field_save_path = os.path.join(session_dir, "research_field.md")
+    
+    rf_type, rf_data = read_gradio_file(research_file)
+    if rf_type is None:
+        raise ValueError("研究内容文件上传失败或格式不正确")
+    
+    def decode_with_fallback(data: bytes) -> str:
+        encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin-1']
+        for enc in encodings:
+            try:
+                return data.decode(enc)
+            except (UnicodeDecodeError, LookupError):
+                continue
+        return data.decode('utf-8', errors='replace')
+    
+    research_text = ""
+    if rf_type == "path":
+        with open(rf_data, "rb") as f:
+            raw_bytes = f.read()
+        research_text = decode_with_fallback(raw_bytes)
+    elif rf_type in ("bytes", "fileobj"):
+        if isinstance(rf_data, bytes):
+            research_text = decode_with_fallback(rf_data)
+        else:
+            research_text = decode_with_fallback(rf_data)
+    
+    with open(research_field_save_path, "w", encoding="utf-8") as f:
+        f.write(research_text)
+    
+    return research_field_save_path, research_text
+
+
 processing_threads: Dict[str, threading.Thread] = {}
 
 # 供应商配置
@@ -240,6 +277,21 @@ MODEL_CHOICES_BY_PROVIDER = {
         "其他模型": "custom",
     },
 }
+
+ARXIV_CATEGORY_CHOICES = [
+    "全部",
+    "cs.AI",
+    "cs.LG",
+    "cs.CV",
+    "cs.CL",
+    "cs.RO",
+    "cs.SE",
+    "stat.ML",
+    "math.OC",
+    "eess.SP",
+]
+
+DEFAULT_ARXIV_TOP_K = 30
 
 
 
@@ -862,6 +914,290 @@ def poll_pr_logs(pr_session_state):
     return logs, pr_session_state
 
 
+def poll_fs_logs(fs_session_state):
+    """轮询按领域筛查流程日志"""
+    if not fs_session_state:
+        return gr.update(), fs_session_state
+    
+    session_id = fs_session_state.get("session_id")
+    if not session_id:
+        return gr.update(), fs_session_state
+    
+    session = paper_search_service.get_session(session_id)
+    if not session or not session.log_collector:
+        return gr.update(), fs_session_state
+    
+    logs = session.log_collector.get_recent(30)
+    if not logs:
+        return gr.update(), fs_session_state
+    
+    prev_logs = fs_session_state.get("_prev_logs", "")
+    if logs == prev_logs:
+        return gr.update(), fs_session_state
+    
+    fs_session_state["_prev_logs"] = logs
+    return logs, fs_session_state
+
+
+def format_screening_item(item: Dict[str, Any]) -> str:
+    if not item:
+        return ""
+    detail = item.get("innovation_detail", "")
+    source = item.get("source", "Unknown")
+    adaptation = item.get("adaptation", "")
+    return (
+        f"创新点：\n{detail}\n\n"
+        f"论文出处：\n{source}\n\n"
+        f"迁移建议/注意事项：\n{adaptation}"
+    )
+
+
+def format_combination_result(result: Dict[str, Any]) -> str:
+    if not result:
+        return ""
+    combination = result.get("best_combination", [])
+    reason = result.get("reason", "")
+    parts = []
+    if combination:
+        parts.append("推荐组合：")
+        for idx, item in enumerate(combination, 1):
+            detail = item.get("innovation_detail", "")
+            source = item.get("source", "Unknown")
+            parts.append(f"{idx}. {detail}\n   出处：{source}")
+    if reason:
+        parts.append(f"\n组合理由：\n{reason}")
+    return "\n".join(parts).strip()
+
+
+def start_field_query(
+    research_md_file,
+    start_date,
+    end_date,
+    arxiv_category,
+    arxiv_custom,
+    provider_choice,
+    api_key,
+    model_choice,
+    custom_model,
+):
+    """生成检索式"""
+    if not research_md_file:
+        return None, gr.update(), "⚠️ 请上传研究内容 md 文件！", gr.update(), gr.update()
+    if not api_key or not api_key.strip():
+        return None, gr.update(), "⚠️ 请输入 API 密钥！", gr.update(), gr.update()
+    
+    provider_config = PROVIDER_CONFIGS.get(provider_choice, PROVIDER_CONFIGS["OpenRouter"])
+    provider_key = provider_config["provider_key"]
+    model_choices = MODEL_CHOICES_BY_PROVIDER.get(provider_choice, MODEL_CHOICES_BY_PROVIDER["OpenRouter"])
+    
+    if model_choice == "其他模型":
+        if not custom_model or not custom_model.strip():
+            return None, gr.update(), "⚠️ 请输入自定义模型名称！", gr.update(), gr.update()
+        selected_model = custom_model.strip()
+    else:
+        selected_model = model_choices.get(model_choice, list(model_choices.values())[0])
+    
+    session_id = str(uuid.uuid4())[:8]
+    
+    try:
+        init_llm_client(api_key=api_key.strip(), provider=provider_key, model=selected_model)
+        research_path, _ = save_research_md_file(research_md_file, session_id)
+        paper_search_service.create_session(
+            session_id,
+            research_path,
+            start_date,
+            end_date,
+            arxiv_category,
+            arxiv_custom,
+            DEFAULT_ARXIV_TOP_K,
+        )
+        agent1_output = paper_search_service.run_query_agent(session_id)
+        search_query = agent1_output.get("search_query", "")
+        
+        fs_session_state = {
+            "session_id": session_id,
+            "current_adaptable_idx": 0,
+            "current_not_adaptable_idx": 0,
+            "adaptable_list": [],
+            "not_adaptable_list": [],
+        }
+        
+        return (
+            fs_session_state,
+            search_query,
+            "✅ 检索式已生成，请确认或编辑后检索",
+            "",
+            gr.update(choices=[], value=[]),
+        )
+    except Exception as e:
+        return None, gr.update(), f"❌ 生成检索式失败：{str(e)}", gr.update(), gr.update()
+
+
+def search_arxiv_papers(fs_session_state, query_text):
+    """检索 arXiv 论文并展示候选列表"""
+    if not fs_session_state:
+        return gr.update(), gr.update(), gr.update(), "⚠️ 会话状态丢失，请重新生成检索式"
+    
+    session_id = fs_session_state.get("session_id")
+    if not session_id:
+        return gr.update(), gr.update(), gr.update(), "⚠️ 会话状态丢失，请重新生成检索式"
+    
+    try:
+        papers, final_query = paper_search_service.search_arxiv(session_id, query_text or "")
+        labels = [f"{p.get('title', 'Unknown')} ({p.get('arxiv_id', 'N/A')})" for p in papers]
+        status = f"✅ 共找到 {len(labels)} 篇论文（默认显示前 {min(len(labels), DEFAULT_ARXIV_TOP_K)} 篇）"
+        return (
+            f"**最终检索式**：`{final_query}`",
+            gr.update(choices=labels, value=labels),
+            f"候选论文数：{len(labels)}",
+            status,
+        )
+    except Exception as e:
+        return gr.update(), gr.update(), gr.update(), f"❌ 检索失败：{str(e)}"
+
+
+def start_field_analysis(fs_session_state, selected_labels):
+    """启动按领域筛查流程"""
+    if not fs_session_state:
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            fs_session_state,
+            "⚠️ 会话状态丢失，请重新生成检索式",
+            gr.Timer(active=False),
+        )
+    
+    if not selected_labels:
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            fs_session_state,
+            "⚠️ 请至少选择一篇论文",
+            gr.Timer(active=False),
+        )
+    
+    fs_session_state["selected_labels"] = selected_labels
+    fs_session_state["current_adaptable_idx"] = 0
+    fs_session_state["current_not_adaptable_idx"] = 0
+    fs_session_state["adaptable_list"] = []
+    fs_session_state["not_adaptable_list"] = []
+    
+    return (
+        gr.update(visible=False),
+        gr.update(visible=True),
+        gr.update(visible=False),
+        fs_session_state,
+        "⏳ 正在下载并分析论文，请稍候...",
+        gr.Timer(active=True),
+    )
+
+
+def run_field_analysis_workflow(fs_session_state):
+    """执行按领域筛查流程并更新界面"""
+    if not fs_session_state:
+        return (
+            gr.update(visible=True),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            fs_session_state,
+            "❌ 会话状态丢失",
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.Timer(active=False),
+        )
+    
+    session_id = fs_session_state.get("session_id")
+    selected_labels = fs_session_state.get("selected_labels", [])
+    
+    try:
+        result = paper_search_service.run_workflow(session_id, selected_labels)
+        adaptable = result.get("adaptable", [])
+        not_adaptable = result.get("not_adaptable", [])
+        combination = result.get("combination", {})
+        
+        fs_session_state["adaptable_list"] = adaptable
+        fs_session_state["not_adaptable_list"] = not_adaptable
+        fs_session_state["current_adaptable_idx"] = 0
+        fs_session_state["current_not_adaptable_idx"] = 0
+        
+        adaptable_text = format_screening_item(adaptable[0]) if adaptable else ""
+        not_adaptable_text = format_screening_item(not_adaptable[0]) if not_adaptable else ""
+        combination_text = format_combination_result(combination)
+        
+        return (
+            gr.update(visible=False),
+            gr.update(visible=False),
+            gr.update(visible=True),
+            fs_session_state,
+            "",
+            adaptable_text,
+            f"可移植 {1 if adaptable else 0}/{len(adaptable)}",
+            not_adaptable_text,
+            f"不可移植 {1 if not_adaptable else 0}/{len(not_adaptable)}",
+            combination_text,
+            gr.Timer(active=False),
+        )
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return (
+            gr.update(visible=True),
+            gr.update(visible=False),
+            gr.update(visible=False),
+            fs_session_state,
+            f"❌ 分析失败：{str(e)}",
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.update(),
+            gr.Timer(active=False),
+        )
+
+
+def update_adaptable_display(fs_session_state, direction):
+    if not fs_session_state:
+        return fs_session_state, gr.update(), gr.update()
+    
+    current_idx = fs_session_state.get("current_adaptable_idx", 0)
+    items = fs_session_state.get("adaptable_list", [])
+    if not items:
+        return fs_session_state, gr.update(), gr.update()
+    
+    if direction == "next":
+        current_idx = min(current_idx + 1, len(items) - 1)
+    elif direction == "prev":
+        current_idx = max(current_idx - 1, 0)
+    
+    fs_session_state["current_adaptable_idx"] = current_idx
+    current_text = format_screening_item(items[current_idx])
+    return fs_session_state, current_text, f"可移植 {current_idx + 1}/{len(items)}"
+
+
+def update_not_adaptable_display(fs_session_state, direction):
+    if not fs_session_state:
+        return fs_session_state, gr.update(), gr.update()
+    
+    current_idx = fs_session_state.get("current_not_adaptable_idx", 0)
+    items = fs_session_state.get("not_adaptable_list", [])
+    if not items:
+        return fs_session_state, gr.update(), gr.update()
+    
+    if direction == "next":
+        current_idx = min(current_idx + 1, len(items) - 1)
+    elif direction == "prev":
+        current_idx = max(current_idx - 1, 0)
+    
+    fs_session_state["current_not_adaptable_idx"] = current_idx
+    current_text = format_screening_item(items[current_idx])
+    return fs_session_state, current_text, f"不可移植 {current_idx + 1}/{len(items)}"
+
+
 def start_paper_reading(pdf_file, research_field_file, provider_choice, api_key, model_choice, custom_model):
     """启动论文阅读流程"""
     if not pdf_file or not research_field_file:
@@ -1273,6 +1609,7 @@ with gr.Blocks(title="AI 论文助手") as demo:
     
     session_state = gr.State(None)
     pr_session_state = gr.State(None)
+    fs_session_state = gr.State(None)
     
     gr.Markdown(
         """
@@ -1584,6 +1921,277 @@ with gr.Blocks(title="AI 论文助手") as demo:
                 fn=lambda state: update_agent4_display(state, "next"),
                 inputs=[pr_session_state],
                 outputs=[pr_session_state, pr_agent4_output, pr_agent4_index],
+            )
+
+        with gr.TabItem("按领域筛查"):
+            gr.Markdown(
+                """
+                **大规模论文筛查 - 按领域筛查：**
+                - **生成检索式**：上传研究内容，选择时间范围与领域
+                - **检索并确认**：获取候选论文并勾选下载
+                - **分析**：批量提取创新点并评估可移植性
+                - **汇总**：输出可移植/不可移植创新点与组合建议
+                """
+            )
+            
+            with gr.Column(visible=True) as fs_upload_col:
+                gr.Markdown("## 📤 配置与检索")
+                
+                with gr.Group():
+                    gr.Markdown("### 🔑 API 配置")
+                    fs_provider_choice = gr.Dropdown(
+                        label="LLM 供应商",
+                        choices=list(PROVIDER_CONFIGS.keys()),
+                        value="OpenRouter",
+                        info="请选择你的 LLM 供应商",
+                    )
+                    
+                    fs_env_api_key = get_api_key_for_provider("OpenRouter")
+                    fs_api_key_input = gr.Textbox(
+                        label=PROVIDER_CONFIGS["OpenRouter"]["label"],
+                        placeholder=f"请输入 API 密钥（{PROVIDER_CONFIGS['OpenRouter']['placeholder']}）",
+                        value=fs_env_api_key,
+                        type="password",
+                        info="API 密钥不会被存储，仅用于本次会话。" + ("（已从 .env 载入）" if fs_env_api_key else "")
+                    )
+                    
+                    def fs_on_provider_change(provider):
+                        config = PROVIDER_CONFIGS.get(provider, PROVIDER_CONFIGS["OpenRouter"])
+                        env_key = get_api_key_for_provider(provider)
+                        model_choices = MODEL_CHOICES_BY_PROVIDER.get(provider, MODEL_CHOICES_BY_PROVIDER["OpenRouter"])
+                        default_model = get_default_model_for_provider(provider)
+                        return (
+                            gr.update(
+                                label=config["label"],
+                                placeholder=f"请输入 API 密钥（{config['placeholder']}）",
+                                value=env_key,
+                                info="API 密钥不会被存储，仅用于本次会话。" + ("（已从 .env 载入）" if env_key else "")
+                            ),
+                            gr.update(
+                                choices=list(model_choices.keys()),
+                                value=default_model,
+                            ),
+                        )
+                
+                gr.Markdown("---")
+                
+                with gr.Group():
+                    gr.Markdown("### 🤖 模型选择")
+                    with gr.Row():
+                        fs_model_choice = gr.Dropdown(
+                            label="选择模型",
+                            choices=list(MODEL_CHOICES_BY_PROVIDER["OpenRouter"].keys()),
+                            value="Gemini 3 Flash",
+                            info="选择要使用的 LLM 模型",
+                            scale=2,
+                        )
+                        fs_custom_model_input = gr.Textbox(
+                            label="自定义模型名称",
+                            placeholder="请输入模型名称",
+                            visible=False,
+                            scale=3,
+                        )
+                    
+                    def fs_toggle_custom_model(choice):
+                        return gr.update(visible=(choice == "其他模型"))
+                    
+                    fs_model_choice.change(
+                        fn=fs_toggle_custom_model,
+                        inputs=[fs_model_choice],
+                        outputs=[fs_custom_model_input],
+                    )
+                    
+                    fs_provider_choice.change(
+                        fn=fs_on_provider_change,
+                        inputs=[fs_provider_choice],
+                        outputs=[fs_api_key_input, fs_model_choice],
+                    )
+                
+                gr.Markdown("---")
+                
+                gr.Markdown("### 📄 研究内容与检索条件")
+                fs_research_md_input = gr.File(
+                    label="📝 研究内容（.md）",
+                    file_types=[".md"],
+                    file_count="single",
+                )
+                
+                with gr.Row():
+                    fs_start_date = gr.Textbox(
+                        label="起始日期（可选）",
+                        placeholder="YYYY-MM-DD",
+                    )
+                    fs_end_date = gr.Textbox(
+                        label="结束日期（可选）",
+                        placeholder="YYYY-MM-DD",
+                    )
+                
+                with gr.Row():
+                    fs_category_choice = gr.Dropdown(
+                        label="arXiv 领域（下拉）",
+                        choices=ARXIV_CATEGORY_CHOICES,
+                        value="全部",
+                    )
+                    fs_category_custom = gr.Textbox(
+                        label="arXiv 领域（自定义）",
+                        placeholder="如 cs.LG, stat.ML 或自定义查询",
+                    )
+                
+                fs_generate_query_btn = gr.Button("🧠 生成检索式", variant="primary")
+                fs_query_text = gr.Textbox(
+                    label="检索式（可编辑）",
+                    lines=3,
+                    max_lines=6,
+                    interactive=True,
+                )
+                
+                fs_search_btn = gr.Button("🔎 检索论文", variant="secondary")
+                fs_query_final = gr.Markdown("")
+                
+                fs_paper_choices = gr.CheckboxGroup(
+                    label="候选论文（默认全选）",
+                    choices=[],
+                    value=[],
+                )
+                fs_paper_count = gr.Markdown("")
+                
+                fs_confirm_papers_btn = gr.Button("🚀 确认论文并开始分析", variant="primary")
+                fs_status = gr.Markdown("")
+            
+            with gr.Column(visible=False) as fs_loading_col:
+                gr.Markdown("## ⏳ 正在分析...")
+                fs_loading_status = gr.Markdown("初始化中...")
+                
+                gr.Markdown("### 📋 实时日志")
+                fs_log_display = gr.Textbox(
+                    value="等待开始...",
+                    label="",
+                    lines=10,
+                    max_lines=15,
+                    interactive=False,
+                )
+                fs_log_timer = gr.Timer(value=1.5, active=False)
+            
+            with gr.Column(visible=False) as fs_result_col:
+                gr.Markdown("## 📊 筛查结果")
+                
+                gr.Markdown("### ✅ 可移植创新点")
+                with gr.Row():
+                    fs_adaptable_prev_btn = gr.Button("◀ 上一条", size="sm")
+                    fs_adaptable_index = gr.Markdown("可移植 0/0")
+                    fs_adaptable_next_btn = gr.Button("下一条 ▶", size="sm")
+                fs_adaptable_output = gr.Textbox(
+                    label="当前可移植创新点",
+                    lines=10,
+                    max_lines=20,
+                    interactive=False,
+                )
+                
+                gr.Markdown("---")
+                gr.Markdown("### ❌ 不可移植创新点")
+                with gr.Row():
+                    fs_not_adaptable_prev_btn = gr.Button("◀ 上一条", size="sm")
+                    fs_not_adaptable_index = gr.Markdown("不可移植 0/0")
+                    fs_not_adaptable_next_btn = gr.Button("下一条 ▶", size="sm")
+                fs_not_adaptable_output = gr.Textbox(
+                    label="当前不可移植创新点",
+                    lines=10,
+                    max_lines=20,
+                    interactive=False,
+                )
+                
+                gr.Markdown("---")
+                gr.Markdown("### 🤝 组合建议")
+                fs_combination_output = gr.Textbox(
+                    label="组合建议",
+                    lines=8,
+                    max_lines=16,
+                    interactive=False,
+                )
+            
+            fs_generate_query_btn.click(
+                fn=start_field_query,
+                inputs=[
+                    fs_research_md_input,
+                    fs_start_date,
+                    fs_end_date,
+                    fs_category_choice,
+                    fs_category_custom,
+                    fs_provider_choice,
+                    fs_api_key_input,
+                    fs_model_choice,
+                    fs_custom_model_input,
+                ],
+                outputs=[
+                    fs_session_state,
+                    fs_query_text,
+                    fs_status,
+                    fs_query_final,
+                    fs_paper_choices,
+                ],
+            )
+            
+            fs_search_btn.click(
+                fn=search_arxiv_papers,
+                inputs=[fs_session_state, fs_query_text],
+                outputs=[
+                    fs_query_final,
+                    fs_paper_choices,
+                    fs_paper_count,
+                    fs_status,
+                ],
+            )
+            
+            fs_confirm_papers_btn.click(
+                fn=start_field_analysis,
+                inputs=[fs_session_state, fs_paper_choices],
+                outputs=[
+                    fs_upload_col, fs_loading_col, fs_result_col,
+                    fs_session_state, fs_loading_status, fs_log_timer,
+                ],
+            ).then(
+                fn=run_field_analysis_workflow,
+                inputs=[fs_session_state],
+                outputs=[
+                    fs_upload_col, fs_loading_col, fs_result_col,
+                    fs_session_state, fs_loading_status,
+                    fs_adaptable_output,
+                    fs_adaptable_index,
+                    fs_not_adaptable_output,
+                    fs_not_adaptable_index,
+                    fs_combination_output,
+                    fs_log_timer,
+                ],
+            )
+            
+            fs_log_timer.tick(
+                fn=poll_fs_logs,
+                inputs=[fs_session_state],
+                outputs=[fs_log_display, fs_session_state],
+            )
+            
+            fs_adaptable_prev_btn.click(
+                fn=lambda state: update_adaptable_display(state, "prev"),
+                inputs=[fs_session_state],
+                outputs=[fs_session_state, fs_adaptable_output, fs_adaptable_index],
+            )
+            
+            fs_adaptable_next_btn.click(
+                fn=lambda state: update_adaptable_display(state, "next"),
+                inputs=[fs_session_state],
+                outputs=[fs_session_state, fs_adaptable_output, fs_adaptable_index],
+            )
+            
+            fs_not_adaptable_prev_btn.click(
+                fn=lambda state: update_not_adaptable_display(state, "prev"),
+                inputs=[fs_session_state],
+                outputs=[fs_session_state, fs_not_adaptable_output, fs_not_adaptable_index],
+            )
+            
+            fs_not_adaptable_next_btn.click(
+                fn=lambda state: update_not_adaptable_display(state, "next"),
+                inputs=[fs_session_state],
+                outputs=[fs_session_state, fs_not_adaptable_output, fs_not_adaptable_index],
             )
 
 if __name__ == "__main__":

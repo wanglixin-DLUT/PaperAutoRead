@@ -13,7 +13,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import urllib.request
 import urllib.parse
 import threading
+import ssl
 from arxiv import _fetch_metadata_by_id
+from llm import get_llm_request_queue
 
 try:
     if hasattr(sys.stdout, "reconfigure"):
@@ -21,7 +23,22 @@ try:
 except Exception:
     pass
 
-ARXIV_DIRECT_OPENER = urllib.request.build_opener()
+def _build_https_opener() -> urllib.request.OpenerDirector:
+    no_verify = os.environ.get("ARXIV_SSL_NO_VERIFY", "").strip().lower() in {"1", "true", "yes"}
+    if no_verify:
+        context = ssl.create_default_context()
+        context.check_hostname = False
+        context.verify_mode = ssl.CERT_NONE
+        return urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+    try:
+        import certifi
+        context = ssl.create_default_context(cafile=certifi.where())
+        return urllib.request.build_opener(urllib.request.HTTPSHandler(context=context))
+    except Exception:
+        return urllib.request.build_opener()
+
+
+ARXIV_DIRECT_OPENER = _build_https_opener()
 ARXIV_HOSTS = {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}
             
 PDF_CONVERT_LOCK = threading.Lock()
@@ -59,32 +76,60 @@ def _fix_json_escapes(json_str: str) -> str:
     json_str = json_str.replace('\x00ESCAPED_F\x00', '\\f')
     return json_str
 
+def _pdf_to_md_fallback_pypdfium2(pdf_path: str) -> str:
+    """Fallback conversion using pypdfium2 text extraction."""
+    import pypdfium2 as pdfium
+    from docling.utils.locks import pypdfium2_lock
+
+    md_parts = []
+    with pypdfium2_lock:
+        pdf = pdfium.PdfDocument(pdf_path)
+    try:
+        page_count = len(pdf)
+        for i in range(page_count):
+            with pypdfium2_lock:
+                page = pdf[i]
+                textpage = page.get_textpage()
+                text = textpage.get_text_range(force_this=True)
+            text = (text or "").strip()
+            md_parts.append(f"# Page {i + 1}\n\n{text}")
+    finally:
+        with pypdfium2_lock:
+            pdf.close()
+
+    return "\n\n".join(md_parts).strip() + "\n"
+
+
 def pdf_to_md(pdf_path: str, output_path: str) -> str | None:
     """Convert PDF to Markdown.
-    
+
     Uses a global lock to protect docling calls, ensuring only one PDF is converted at a time.
     Returns the generated file path, or None on failure.
-    
+
     Note: docling is imported lazily to avoid triggering CUDA initialization errors
     in HF Spaces Stateless GPU environment.
     """
     global _docling_converter
-    
+
     try:
         paths = Path(pdf_path)
-        
+
         if not os.path.exists(output_path):
             os.makedirs(output_path)
-        
+
         print(f"[DEBUG] Preparing to convert PDF: {pdf_path}")
         print(f"[DEBUG] Waiting to acquire docling conversion lock...")
+        md_content = None
+        docling_error = None
         with PDF_CONVERT_LOCK:
             print(f"[DEBUG] Lock acquired, starting docling conversion...")
-            
 
             if _docling_converter is None:
                 device_str = DOCLING_DEVICE
-                print(f"[DEBUG] First use, importing and initializing docling DocumentConverter ({device_str.upper()} mode)...")
+                print(
+                    "[DEBUG] First use, importing and initializing docling DocumentConverter "
+                    f"({device_str.upper()} mode)..."
+                )
                 from docling.document_converter import DocumentConverter, PdfFormatOption
                 from docling.datamodel.pipeline_options import PdfPipelineOptions
                 from docling.datamodel.base_models import InputFormat
@@ -96,40 +141,55 @@ def pdf_to_md(pdf_path: str, output_path: str) -> str | None:
                         accelerator_device = AcceleratorDevice.CPU
                 except ImportError:
                     accelerator_device = device_str
-                
+
                 pipeline_options = PdfPipelineOptions()
                 pipeline_options.accelerator_options.device = accelerator_device
-                
+
                 _docling_converter = DocumentConverter(
                     format_options={
                         InputFormat.PDF: PdfFormatOption(pipeline_options=pipeline_options)
                     }
                 )
-                print(f"[DEBUG] docling DocumentConverter initialization complete ({device_str.upper()} mode)")
-        
+                print(
+                    f"[DEBUG] docling DocumentConverter initialization complete ({device_str.upper()} mode)"
+                )
+
             converter = _docling_converter
-        
+
             print(f"[DEBUG] Calling docling converter.convert()...")
-            raw_result = converter.convert(pdf_path)
-        
-            if hasattr(raw_result, 'document'):
-                md_content = raw_result.document.export_to_markdown()
-            else:
-                md_content = raw_result.export_to_markdown()
-            
-            print(f"[DEBUG] docling conversion complete, releasing lock")
-        
+            try:
+                raw_result = converter.convert(pdf_path)
+                if hasattr(raw_result, "document"):
+                    md_content = raw_result.document.export_to_markdown()
+                else:
+                    md_content = raw_result.export_to_markdown()
+                print(f"[DEBUG] docling conversion complete, releasing lock")
+            except Exception as e:
+                docling_error = e
+                print(
+                    f"[WARNING] docling conversion failed: {type(e).__name__}: {e}. "
+                    "Will try fallback extraction."
+                )
+
+        if md_content is None:
+            md_content = _pdf_to_md_fallback_pypdfium2(pdf_path)
+            print("[INFO] Fallback conversion (pypdfium2) complete")
+
         target_md = os.path.join(output_path, paths.stem + ".md")
-        with open(target_md, 'w', encoding='utf-8') as f:
+        with open(target_md, "w", encoding="utf-8") as f:
             f.write(md_content)
-        
+
         print(f"[SUCCESS] Markdown file saved to: {target_md}")
         print(f"[DEBUG] Markdown file size: {len(md_content)} characters")
-        
+
         return target_md
-        
+
     except Exception as e:
         print(f"[ERROR] pdf_to_md failed: {type(e).__name__}: {e}")
+        if "docling_error" in locals() and docling_error is not None:
+            print(
+                f"[ERROR] docling failure before fallback: {type(docling_error).__name__}: {docling_error}"
+            )
         import traceback
         traceback.print_exc()
         return None
@@ -194,6 +254,82 @@ def download_pdf_and_convert_md(paper: dict, output_dir: str) -> str | None:
         except Exception as e:
             print(f"[ERROR] Failed to create fallback Markdown: {e}")
             return None
+
+
+def download_pdf_only(paper: dict, output_dir: str, max_retries: int = 3) -> str | None:
+    """Download PDF only and return file path, or None on failure."""
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+    
+    title = paper.get('title') or paper.get('arxiv_id') or 'paper'
+    arxiv_id = paper.get('arxiv_id') or ''
+    base_name = f"{arxiv_id}_{title[:50]}" if arxiv_id else title[:50]
+    safe = _safe_filename(base_name)
+    
+    pdf_url = paper.get('pdf_url') or ''
+    if not pdf_url:
+        abs_url = paper.get('abs_url') or ''
+        if abs_url:
+            pdf_url = abs_url.replace('/abs/', '/pdf/')
+    if pdf_url and not pdf_url.endswith('.pdf'):
+        pdf_url = pdf_url + '.pdf'
+    if not pdf_url:
+        print("[WARNING] No PDF URL found, skipping download.")
+        return None
+    
+    pdf_path = os.path.join(output_dir, f"{safe}.pdf")
+    
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'application/pdf,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+    }
+    
+    parsed = urllib.parse.urlparse(pdf_url)
+    host = (parsed.hostname or '').lower()
+    use_direct = (host in ARXIV_HOSTS) or any(host.endswith('.' + h) for h in ARXIV_HOSTS)
+    
+    for attempt in range(1, max_retries + 1):
+        try:
+            if os.path.exists(pdf_path):
+                return pdf_path
+            
+            req = urllib.request.Request(pdf_url, headers=headers)
+            opener = ARXIV_DIRECT_OPENER if use_direct else urllib.request
+            with opener.open(req, timeout=60) as response:
+                with open(pdf_path, 'wb') as f:
+                    f.write(response.read())
+            return pdf_path
+        except Exception as e:
+            print(f"[WARNING] PDF download failed (attempt {attempt}/{max_retries}): {e}")
+            time.sleep(1.5 * attempt)
+    
+    return None
+
+
+def submit_llm_request(
+    client,
+    instructions: str | None,
+    input_text: str,
+    model: str | None = None,
+    enable_reasoning: bool = True,
+    temperature: float = 0.6,
+    agent_name: str | None = None,
+):
+    """Submit an LLM request to the shared queue and return the request handle."""
+    queue = get_llm_request_queue(max_concurrent=5)
+    return queue.submit(
+        client=client,
+        instructions=instructions,
+        input_text=input_text,
+        model=model,
+        enable_reasoning=enable_reasoning,
+        temperature=temperature,
+        agent_name=agent_name,
+    )
     
     try:
         print(f"[DEBUG] Starting paper download: {paper.get('title', 'Unknown')[:60]}...")
