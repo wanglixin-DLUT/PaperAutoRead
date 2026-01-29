@@ -4,23 +4,23 @@ import sys
 os.environ["HF_HUB_DISABLE_SYMLINKS_WARNING"] = "1"
 os.environ["HF_HUB_DISABLE_SYMLINKS"] = "1"
 
-# Load environment variables from .env file
+# 从 .env 文件加载环境变量
 try:
     from dotenv import load_dotenv
     load_dotenv()
 except ImportError:
-    pass  # dotenv not installed, skip
+    pass  # 未安装 dotenv，跳过
 
 if "--device" in sys.argv:
     try:
         device_idx = sys.argv.index("--device")
         device_value = sys.argv[device_idx + 1]
         os.environ["DOCLING_DEVICE"] = device_value
-        print(f"[INFO] DOCLING_DEVICE set to: {device_value}")
+        print(f"[INFO] DOCLING_DEVICE 已设置为: {device_value}")
     except (IndexError, ValueError):
-        print("[WARNING] --device requires a value (cpu or cuda)")
+        print("[WARNING] --device 需要一个值（cpu 或 cuda）")
 
-os.environ["GRADIO_LANGUAGE"] = "en"  
+os.environ["GRADIO_LANGUAGE"] = "zh-CN"
 
 import uuid
 import time
@@ -63,7 +63,7 @@ def read_gradio_file(file_obj) -> Tuple[Optional[str], Optional[Any]]:
     if hasattr(file_obj, "read"):
         return "fileobj", file_obj.read()
 
-    raise ValueError(f"Unknown gr.File object format: {type(file_obj)}")
+    raise ValueError(f"未知的 gr.File 对象格式: {type(file_obj)}")
 
 
 def save_uploaded_files(pdf_file, review_file, session_id: str) -> Tuple[str, str, str]:
@@ -75,7 +75,7 @@ def save_uploaded_files(pdf_file, review_file, session_id: str) -> Tuple[str, st
     
     pdf_type, pdf_data = read_gradio_file(pdf_file)
     if pdf_type is None:
-        raise ValueError("PDF file upload failed or incorrect format")
+        raise ValueError("PDF 文件上传失败或格式不正确")
     if pdf_type == "path":
         shutil.copy(pdf_data, pdf_save_path)
     elif pdf_type in ("bytes", "fileobj"):
@@ -84,12 +84,12 @@ def save_uploaded_files(pdf_file, review_file, session_id: str) -> Tuple[str, st
     
     rev_type, rev_data = read_gradio_file(review_file)
     if rev_type is None:
-        raise ValueError("Review file upload failed or incorrect format")
+        raise ValueError("评审文件上传失败或格式不正确")
     review_text = ""
     
 
     def decode_with_fallback(data: bytes) -> str:
-        """Try multiple encodings to decode bytes, with UTF-8 as primary."""
+        """尝试多种编码解码字节，优先使用 UTF-8。"""
         encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin-1']
         for enc in encodings:
             try:
@@ -116,7 +116,7 @@ def save_uploaded_files(pdf_file, review_file, session_id: str) -> Tuple[str, st
 
 
 def save_paper_reading_files(pdf_file, research_field_file, session_id: str) -> Tuple[str, str]:
-    """Save uploaded files for paper reading workflow"""
+    """保存论文阅读流程的上传文件"""
     session_dir = os.path.join(SAVE_DIR, session_id)
     os.makedirs(session_dir, exist_ok=True)
     
@@ -125,7 +125,7 @@ def save_paper_reading_files(pdf_file, research_field_file, session_id: str) -> 
     
     pdf_type, pdf_data = read_gradio_file(pdf_file)
     if pdf_type is None:
-        raise ValueError("PDF file upload failed or incorrect format")
+        raise ValueError("PDF 文件上传失败或格式不正确")
     if pdf_type == "path":
         shutil.copy(pdf_data, pdf_save_path)
     elif pdf_type in ("bytes", "fileobj"):
@@ -134,10 +134,10 @@ def save_paper_reading_files(pdf_file, research_field_file, session_id: str) -> 
     
     rf_type, rf_data = read_gradio_file(research_field_file)
     if rf_type is None:
-        raise ValueError("Research field file upload failed or incorrect format")
+        raise ValueError("研究领域文件上传失败或格式不正确")
     
     def decode_with_fallback(data: bytes) -> str:
-        """Try multiple encodings to decode bytes, with UTF-8 as primary."""
+        """尝试多种编码解码字节，优先使用 UTF-8。"""
         encodings = ['utf-8', 'gbk', 'gb2312', 'gb18030', 'latin-1']
         for enc in encodings:
             try:
@@ -165,79 +165,79 @@ def save_paper_reading_files(pdf_file, research_field_file, session_id: str) -> 
 
 processing_threads: Dict[str, threading.Thread] = {}
 
-# Provider configurations
+# 供应商配置
 PROVIDER_CONFIGS = {
     "OpenRouter": {
         "provider_key": "openrouter",
         "env_var": "OPENROUTER_API_KEY",
-        "label": "OpenRouter API Key",
+        "label": "OpenRouter API 密钥",
         "placeholder": "sk-or-v1-...",
     },
     "Qwen (DashScope)": {
         "provider_key": "qwen",
         "env_var": "QWEN_API_KEY",
-        "label": "Qwen API Key",
+        "label": "Qwen API 密钥",
         "placeholder": "sk-...",
     },
     "DeepSeek": {
         "provider_key": "deepseek",
         "env_var": "DEEPSEEK_API_KEY",
-        "label": "DeepSeek API Key",
+        "label": "DeepSeek API 密钥",
         "placeholder": "sk-...",
     },
     "OpenAI": {
         "provider_key": "openai",
         "env_var": "OPENAI_API_KEY",
-        "label": "OpenAI API Key",
+        "label": "OpenAI API 密钥",
         "placeholder": "sk-...",
     },
     "Gemini": {
         "provider_key": "gemini",
         "env_var": "GEMINI_API_KEY",
-        "label": "Gemini API Key",
+        "label": "Gemini API 密钥",
         "placeholder": "AIza...",
     },
     "ZhiPu (GLM)": {
         "provider_key": "zhipu",
         "env_var": "ZHIPUAI_API_KEY",
-        "label": "ZhiPu API Key",
+        "label": "智谱 API 密钥",
         "placeholder": "...",
     },
 }
 
-# Model choices per provider
+# 各供应商模型选项
 MODEL_CHOICES_BY_PROVIDER = {
     "OpenRouter": {
         "Gemini 3 Flash": "google/gemini-3-flash-preview",
         "Grok 4.1 Fast": "x-ai/grok-4.1-fast",
         "GPT-5 Mini": "openai/gpt-5-mini",
         "DeepSeek V3.2": "deepseek/deepseek-chat-v3.2",
-        "Other models": "custom",
+        "其他模型": "custom",
     },
     "Qwen (DashScope)": {
         "Qwen-Turbo": "qwen-turbo",
         "Qwen-Plus": "qwen-plus",
         "Qwen-Max": "qwen-max",
-        "Other models": "custom",
+        "其他模型": "custom",
     },
     "DeepSeek": {
         "DeepSeek Chat": "deepseek-chat",
         "DeepSeek Reasoner": "deepseek-reasoner",
-        "Other models": "custom",
+        "其他模型": "custom",
     },
     "OpenAI": {
         "GPT-5.2": "gpt-5.2",
         "GPT-5 Mini": "gpt-5-mini",
-        "Other models": "custom",
+        "其他模型": "custom",
     },
     "Gemini": {
         "Gemini-3-Pro": "gemini-3-pro-preview",
         "Gemini-3-Flash": "models/gemini-3-flash-preview",
-        "Other models": "custom",
+        "其他模型": "custom",
     },
     "ZhiPu (GLM)": {
         "GLM-4.7": "glm-4.7",
-        "Other models": "custom",
+        "其他模型": "custom",
     },
 }
 
@@ -245,17 +245,17 @@ MODEL_CHOICES_BY_PROVIDER = {
 
 
 def get_api_key_for_provider(provider: str) -> str:
-    """Get API key from environment for specified provider"""
+    """从环境变量获取指定供应商的 API 密钥"""
     config = PROVIDER_CONFIGS.get(provider, PROVIDER_CONFIGS["OpenRouter"])
     return os.environ.get(config["env_var"], "")
 
 
 def get_default_model_for_provider(provider: str) -> str:
-    """Get default model for specified provider"""
+    """获取指定供应商的默认模型"""
     models = MODEL_CHOICES_BY_PROVIDER.get(provider, MODEL_CHOICES_BY_PROVIDER["OpenRouter"])
-    # Return first model (excluding "Other models")
+    # 返回第一个模型（排除“其他模型”）
     for name, value in models.items():
-        if name != "Other models":
+        if name != "其他模型":
             return name
     return list(models.keys())[0]
 
@@ -268,7 +268,7 @@ def start_analysis(pdf_file, review_file, provider_choice, api_key, model_choice
             gr.update(),
             gr.update(),
             None,
-            "⚠️ Please upload paper PDF and review file!",
+            "⚠️ 请上传论文 PDF 和评审文件！",
             gr.Timer(active=False),  
         )
     
@@ -279,18 +279,18 @@ def start_analysis(pdf_file, review_file, provider_choice, api_key, model_choice
             gr.update(),
             gr.update(),
             None,
-            "⚠️ Please enter API Key!",
+            "⚠️ 请输入 API 密钥！",
             gr.Timer(active=False),
         )
     
-    # Get provider key from config
+    # 从配置获取供应商 key
     provider_config = PROVIDER_CONFIGS.get(provider_choice, PROVIDER_CONFIGS["OpenRouter"])
     provider_key = provider_config["provider_key"]
     
-    # Get model choices for this provider
+    # 获取该供应商的模型选项
     model_choices = MODEL_CHOICES_BY_PROVIDER.get(provider_choice, MODEL_CHOICES_BY_PROVIDER["OpenRouter"])
     
-    if model_choice == "Other models":
+    if model_choice == "其他模型":
         if not custom_model or not custom_model.strip():
             return (
                 gr.update(),
@@ -298,7 +298,7 @@ def start_analysis(pdf_file, review_file, provider_choice, api_key, model_choice
                 gr.update(),
                 gr.update(),
                 None,
-                "⚠️ Please enter custom model name!",
+                "⚠️ 请输入自定义模型名称！",
                 gr.Timer(active=False),
             )
         selected_model = custom_model.strip()
@@ -318,7 +318,7 @@ def start_analysis(pdf_file, review_file, provider_choice, api_key, model_choice
             gr.update(visible=False),
             gr.update(visible=False),
             {"session_id": session_id, "current_idx": 0},
-            "📤 Files uploaded successfully, initializing analysis...",
+            "📤 文件上传成功，正在初始化分析...",
             gr.Timer(active=True),  
         )
         
@@ -329,7 +329,7 @@ def start_analysis(pdf_file, review_file, provider_choice, api_key, model_choice
             gr.update(),
             gr.update(),
             None,
-            f"❌ Processing failed: {str(e)}",
+            f"❌ 处理失败：{str(e)}",
             gr.Timer(active=False),
         )
 
@@ -342,7 +342,7 @@ def run_initial_analysis(session_state):
             gr.update(visible=False),
             gr.update(visible=False),
             session_state,
-            "❌ Session state lost",
+            "❌ 会话状态丢失",
             gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(),
             gr.Timer(active=False), 
@@ -361,9 +361,9 @@ def run_initial_analysis(session_state):
         history_text = format_feedback_history(q_state.feedback_history)
         strategy_content = q_state.agent7_output or ""
         
-        # Determine button text based on whether this is the last question
+        # 根据是否为最后一个问题决定按钮文案
         is_last_question = len(session.questions) == 1
-        btn_text = "📝 Generate Final Rebuttal" if is_last_question else "✅ Satisfied, Next Question"
+        btn_text = "📝 生成最终回复" if is_last_question else "✅ 已满足，下一条问题"
         
         return (
             gr.update(visible=False),
@@ -372,12 +372,12 @@ def run_initial_analysis(session_state):
             gr.update(visible=False),
             session_state,
             "",
-            f"### Question 1 / {len(session.questions)}",
+            f"### 问题 1 / {len(session.questions)}",
             q_state.question_text,
             strategy_content,
             strategy_content,
             "",
-            f"📝 Revisions have been revised {q_state.revision_count} times",
+            f"📝 已修订 {q_state.revision_count} 次",
             gr.update(interactive=True),
             history_text,
             gr.Timer(active=False),
@@ -393,7 +393,7 @@ def run_initial_analysis(session_state):
             gr.update(visible=False),
             gr.update(visible=False),
             session_state,
-            f"❌ Analysis failed : {str(e)}",
+            f"❌ 分析失败：{str(e)}",
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(),
             gr.Timer(active=False),
@@ -416,7 +416,7 @@ def regenerate_strategy(feedback_text, session_state):
         return (
             gr.update(),
             gr.update(),
-            "⚠️ Please enter feedback ",
+            "⚠️ 请输入反馈",
             gr.update(),
             session_state,
         )
@@ -438,7 +438,7 @@ def regenerate_strategy(feedback_text, session_state):
             strategy_content,
             strategy_content,
             "",
-            f"📝 Revisions have been revised {q_state.revision_count} times ✓ Latest revision applied",
+            f"📝 已修订 {q_state.revision_count} 次 ✓ 已应用最新修订",
             history_text,
             session_state,
         )
@@ -448,7 +448,7 @@ def regenerate_strategy(feedback_text, session_state):
             gr.update(),
             gr.update(),
             gr.update(),
-            f"❌ Revision failed: {str(e)}",
+            f"❌ 修订失败：{str(e)}",
             gr.update(),
             session_state,
         )
@@ -456,7 +456,7 @@ def regenerate_strategy(feedback_text, session_state):
 
 def format_feedback_history(history: list) -> str:
     if not history:
-        return "*No revisions yet*"
+        return "*尚无修订*"
     
     lines = []
     for i, record in enumerate(history, 1):
@@ -470,18 +470,18 @@ def format_feedback_history(history: list) -> str:
 
 def generate_strategy_summary(session) -> str:
     lines = []
-    lines.append(" This document contains all questions' rebuttal strategies and To-Do List\n")
+    lines.append(" 本文档包含所有问题的回复策略与待办清单\n")
     lines.append("=" * 60 + "\n")
     
     for q in session.questions:
-        lines.append(f"## Q{q.question_id}: {q.question_text[:100]}{'...' if len(q.question_text) > 100 else ''}")
+        lines.append(f"## 问题{q.question_id}: {q.question_text[:100]}{'...' if len(q.question_text) > 100 else ''}")
         lines.append("")
-        lines.append("### Rebuttal strategy & To-Do List")
+        lines.append("### 回复策略与待办清单")
         lines.append("")
-        lines.append(q.agent7_output if q.agent7_output else "**Not generated**")
+        lines.append(q.agent7_output if q.agent7_output else "**尚未生成**")
         lines.append("")
         if q.revision_count > 0:
-            lines.append(f"> 📝 Revisions have been revised {q.revision_count} times")
+            lines.append(f"> 📝 已修订 {q.revision_count} 次")
         lines.append("")
         lines.append("-" * 40)
         lines.append("")
@@ -508,7 +508,7 @@ def skip_question(session_state):
         session = rebuttal_service.get_session(session_id)
         
         if not session:
-            raise ValueError(f"Session {session_id} not found")
+            raise ValueError(f"未找到会话 {session_id}")
         
         rebuttal_service.mark_question_satisfied(session_id, current_idx)
         
@@ -522,20 +522,20 @@ def skip_question(session_state):
             
             strategy_content = q_state.agent7_output or ""
             
-            # Determine button text based on whether this is the last question
+            # 根据是否为最后一个问题决定按钮文案
             is_last_question = (next_idx + 1) == len(session.questions)
-            btn_text = "📝 Generate Final Rebuttal" if is_last_question else "✅ Satisfied, Next Question"
+            btn_text = "📝 生成最终回复" if is_last_question else "✅ 已满足，下一条问题"
             
             return (
                 gr.update(visible=True),
                 gr.update(visible=False),
                 session_state,
-                f"### Question {next_idx + 1} / {len(session.questions)}",
+                f"### 问题 {next_idx + 1} / {len(session.questions)}",
                 q_state.question_text,
                 strategy_content,
                 strategy_content,
                 "",
-                f"📝 Revisions have been revised {q_state.revision_count} times",
+                f"📝 已修订 {q_state.revision_count} 次",
                 gr.update(interactive=True),
                 history_text,
                 gr.update(), gr.update(), gr.update(), gr.update(),
@@ -564,7 +564,7 @@ def skip_question(session_state):
             session_state,
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(),
-            gr.update(), gr.update(), gr.update(), f"❌ Processing failed: {str(e)}",
+            gr.update(), gr.update(), gr.update(), f"❌ 处理失败：{str(e)}",
             gr.update(),
         )
 
@@ -588,7 +588,7 @@ def confirm_and_next(strategy_text, session_state):
         session = rebuttal_service.get_session(session_id)
         
         if not session:
-            raise ValueError(f"Session {session_id} not found")
+            raise ValueError(f"未找到会话 {session_id}")
         
         session.questions[current_idx].agent7_output = strategy_text
         rebuttal_service.mark_question_satisfied(session_id, current_idx)
@@ -603,20 +603,20 @@ def confirm_and_next(strategy_text, session_state):
             
             strategy_content = q_state.agent7_output or ""
             
-            # Determine button text based on whether this is the last question
+            # 根据是否为最后一个问题决定按钮文案
             is_last_question = (next_idx + 1) == len(session.questions)
-            btn_text = "📝 Generate Final Rebuttal" if is_last_question else "✅ Satisfied, Next Question"
+            btn_text = "📝 生成最终回复" if is_last_question else "✅ 已满足，下一条问题"
             
             return (
                 gr.update(visible=True),
                 gr.update(visible=False),
                 session_state,
-                f"### Question {next_idx + 1} / {len(session.questions)}",
+                f"### 问题 {next_idx + 1} / {len(session.questions)}",
                 q_state.question_text,
                 strategy_content,
                 strategy_content,
                 "",
-                f"📝 Revisions have been revised {q_state.revision_count} times",
+                f"📝 已修订 {q_state.revision_count} 次",
                 gr.update(interactive=True),
                 history_text,
                 gr.update(), gr.update(), gr.update(), gr.update(),
@@ -645,7 +645,7 @@ def confirm_and_next(strategy_text, session_state):
             session_state,
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(),
-            gr.update(), gr.update(), gr.update(), f"❌ Processing failed: {str(e)}",
+            gr.update(), gr.update(), gr.update(), f"❌ 处理失败：{str(e)}",
             gr.update(),
         )
 
@@ -663,7 +663,7 @@ def restart_session():
 
 
 def get_active_sessions_choices():
-    """Get choices for session dropdown"""
+    """获取会话下拉选项"""
     sessions = rebuttal_service.list_active_sessions()
     if not sessions:
         return []
@@ -671,15 +671,15 @@ def get_active_sessions_choices():
 
 
 def refresh_session_list():
-    """Refresh the session dropdown choices"""
+    """刷新会话下拉选项"""
     choices = get_active_sessions_choices()
     if not choices:
-        return gr.update(choices=[], value=None), "📭 No active sessions found"
-    return gr.update(choices=choices, value=choices[0][1]), f"🔄 Found {len(choices)} active session(s)"
+        return gr.update(choices=[], value=None), "📭 未发现活动会话"
+    return gr.update(choices=choices, value=choices[0][1]), f"🔄 发现 {len(choices)} 个活动会话"
 
 
 def resume_session(session_id_to_resume, provider_choice, api_key):
-    """Resume an existing session after page refresh"""
+    """页面刷新后恢复已有会话"""
     if not session_id_to_resume:
         return (
             gr.update(),  # upload_col
@@ -687,7 +687,7 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
             gr.update(),  # interact_col
             gr.update(),  # result_col
             None,         # session_state
-            "⚠️ Please select a session to resume!",  # upload_status
+            "⚠️ 请选择要恢复的会话！",  # upload_status
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(),
             gr.update(),  # confirm_btn
@@ -700,14 +700,14 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
             gr.update(),
             gr.update(),
             None,
-            "⚠️ Please enter API Key before resuming!",
+            "⚠️ 恢复前请输入 API 密钥！",
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(),
             gr.update(),
         )
     
     try:
-        # Initialize LLM client with provided credentials
+        # 使用提供的凭据初始化 LLM 客户端
         provider_config = PROVIDER_CONFIGS.get(provider_choice, PROVIDER_CONFIGS["OpenRouter"])
         provider_key = provider_config["provider_key"]
         model_choices = MODEL_CHOICES_BY_PROVIDER.get(provider_choice, MODEL_CHOICES_BY_PROVIDER["OpenRouter"])
@@ -724,13 +724,13 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
                 gr.update(),
                 gr.update(),
                 None,
-                f"❌ Session {session_id_to_resume} not found!",
+                f"❌ 未找到会话 {session_id_to_resume}！",
                 gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
                 gr.update(), gr.update(), gr.update(),
                 gr.update(),
             )
         
-        # Check if session has questions processed
+        # 检查会话是否已有问题被处理
         if not session.questions:
             return (
                 gr.update(),
@@ -738,13 +738,13 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
                 gr.update(),
                 gr.update(),
                 {"session_id": session_id_to_resume, "current_idx": 0},
-                "📤 Session found but still processing. Please wait...",
+                "📤 已找到会话但仍在处理中，请稍候...",
                 gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
                 gr.update(), gr.update(), gr.update(),
                 gr.update(),
             )
         
-        # Find first unprocessed or unsatisfied question
+        # 找到第一个未处理或未满意的问题
         resume_idx = 0
         for i, q in enumerate(session.questions):
             if not q.is_satisfied and q.agent7_output:
@@ -753,7 +753,7 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
             elif q.is_satisfied:
                 resume_idx = i + 1
         
-        # If all questions are satisfied, go to result page
+        # 如果全部问题已满足，跳转到结果页
         if resume_idx >= len(session.questions):
             strategy_summary = generate_strategy_summary(session)
             final_text = session.final_rebuttal or rebuttal_service.generate_final_rebuttal(session_id_to_resume)
@@ -762,7 +762,7 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
                 gr.update(visible=False),
                 gr.update(visible=False),
                 gr.update(visible=False),
-                gr.update(visible=True),  # Show result page
+                gr.update(visible=True),  # 显示结果页
                 {"session_id": session_id_to_resume, "current_idx": resume_idx - 1},
                 "",
                 gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
@@ -770,13 +770,13 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
                 gr.update(),
             )
         
-        # Resume to the question review page
+        # 恢复到问题审阅页面
         q_state = session.questions[resume_idx]
         history_text = format_feedback_history(q_state.feedback_history)
         strategy_content = q_state.agent7_output or ""
         
         is_last_question = (resume_idx + 1) == len(session.questions)
-        btn_text = "📝 Generate Final Rebuttal" if is_last_question else "✅ Satisfied, Next Question"
+        btn_text = "📝 生成最终回复" if is_last_question else "✅ 已满足，下一条问题"
         
         return (
             gr.update(visible=False),  # upload_col
@@ -785,12 +785,12 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
             gr.update(visible=False),  # result_col
             {"session_id": session_id_to_resume, "current_idx": resume_idx},  # session_state
             "",  # upload_status
-            f"### Question {resume_idx + 1} / {len(session.questions)} (Resumed)",  # progress_info
+            f"### 问题 {resume_idx + 1} / {len(session.questions)}（已恢复）",  # progress_info
             q_state.question_text,  # question_display
             strategy_content,  # strategy_preview
             strategy_content,  # strategy_edit
             "",  # feedback_input
-            f"📝 Revisions have been revised {q_state.revision_count} times",  # revision_info
+            f"📝 已修订 {q_state.revision_count} 次",  # revision_info
             gr.update(interactive=True),  # regenerate_btn
             history_text,  # feedback_history_display
             gr.update(value=btn_text),  # confirm_btn
@@ -805,7 +805,7 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
             gr.update(),
             gr.update(),
             None,
-            f"❌ Failed to resume session: {str(e)}",
+            f"❌ 恢复会话失败：{str(e)}",
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(),
             gr.update(),
@@ -813,7 +813,7 @@ def resume_session(session_id_to_resume, provider_choice, api_key):
 
 
 def poll_logs(session_state):
-    """Poll logs for real-time updates on the loading page"""
+    """轮询加载页的实时日志更新"""
     if not session_state:
         return gr.update(), session_state
     
@@ -838,7 +838,7 @@ def poll_logs(session_state):
 
 
 def poll_pr_logs(pr_session_state):
-    """Poll logs for paper reading workflow"""
+    """轮询论文阅读流程日志"""
     if not pr_session_state:
         return gr.update(), pr_session_state
     
@@ -863,14 +863,14 @@ def poll_pr_logs(pr_session_state):
 
 
 def start_paper_reading(pdf_file, research_field_file, provider_choice, api_key, model_choice, custom_model):
-    """Start paper reading workflow"""
+    """启动论文阅读流程"""
     if not pdf_file or not research_field_file:
         return (
             gr.update(),
             gr.update(),
             gr.update(),
             None,
-            "⚠️ Please upload paper PDF and research field file!",
+            "⚠️ 请上传论文 PDF 和研究领域文件！",
             gr.Timer(active=False),
         )
     
@@ -880,7 +880,7 @@ def start_paper_reading(pdf_file, research_field_file, provider_choice, api_key,
             gr.update(),
             gr.update(),
             None,
-            "⚠️ Please enter API Key!",
+            "⚠️ 请输入 API 密钥！",
             gr.Timer(active=False),
         )
     
@@ -889,14 +889,14 @@ def start_paper_reading(pdf_file, research_field_file, provider_choice, api_key,
     
     model_choices = MODEL_CHOICES_BY_PROVIDER.get(provider_choice, MODEL_CHOICES_BY_PROVIDER["OpenRouter"])
     
-    if model_choice == "Other models":
+    if model_choice == "其他模型":
         if not custom_model or not custom_model.strip():
             return (
                 gr.update(),
                 gr.update(),
                 gr.update(),
                 None,
-                "⚠️ Please enter custom model name!",
+                "⚠️ 请输入自定义模型名称！",
                 gr.Timer(active=False),
             )
         selected_model = custom_model.strip()
@@ -926,7 +926,7 @@ def start_paper_reading(pdf_file, research_field_file, provider_choice, api_key,
             gr.update(visible=True),
             gr.update(visible=False),
             pr_session_state,
-            "📤 Files uploaded successfully, initializing analysis...",
+            "📤 文件上传成功，正在初始化分析...",
             gr.Timer(active=True),
         )
         
@@ -936,20 +936,20 @@ def start_paper_reading(pdf_file, research_field_file, provider_choice, api_key,
             gr.update(),
             gr.update(),
             None,
-            f"❌ Processing failed: {str(e)}",
+            f"❌ 处理失败：{str(e)}",
             gr.Timer(active=False),
         )
 
 
 def run_paper_reading_workflow(pr_session_state):
-    """Execute paper reading workflow and update UI"""
+    """执行论文阅读流程并更新界面"""
     if not pr_session_state:
         return (
             gr.update(visible=True),
             gr.update(visible=False),
             gr.update(visible=False),
             pr_session_state,
-            "❌ Session state lost",
+            "❌ 会话状态丢失",
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(), gr.update(),
@@ -961,14 +961,14 @@ def run_paper_reading_workflow(pr_session_state):
     try:
         result = paper_reading_service.run_workflow(session_id)
         
-        # Update session state with data
+        # 更新会话状态数据
         pr_session_state.update({
             "agent2_data": result["agent2"],
             "agent3_data": result["agent3"],
             "agent4_data": result["agent4"]
         })
         
-        # Format outputs
+        # 格式化输出
         agent1_formatted = json.dumps(result["agent1"], indent=2, ensure_ascii=False)
         agent2_summary_text = result["agent2"].get("full_summary", "")
         innovations = result["agent2"].get("innovations", [])
@@ -988,13 +988,13 @@ def run_paper_reading_workflow(pr_session_state):
             agent1_formatted,
             agent2_summary_text,
             agent2_innovation_text,
-            f"Innovation 1/{len(innovations)}" if innovations else "Innovation 0/0",
+            f"创新点 1/{len(innovations)}" if innovations else "创新点 0/0",
             agent2_keyword_text,
-            f"Keyword 1/{len(keywords)}" if keywords else "Keyword 0/0",
+            f"关键词 1/{len(keywords)}" if keywords else "关键词 0/0",
             agent3_text,
-            f"Innovation Analysis 1/{len(result['agent3'])}" if result["agent3"] else "Innovation Analysis 0/0",
+            f"创新点分析 1/{len(result['agent3'])}" if result["agent3"] else "创新点分析 0/0",
             agent4_text,
-            f"Application Analysis 1/{len(result['agent4'])}" if result["agent4"] else "Application Analysis 0/0",
+            f"应用价值分析 1/{len(result['agent4'])}" if result["agent4"] else "应用价值分析 0/0",
             agent5_formatted,
             gr.Timer(active=False),
         )
@@ -1007,7 +1007,7 @@ def run_paper_reading_workflow(pr_session_state):
             gr.update(visible=False),
             gr.update(visible=False),
             pr_session_state,
-            f"❌ Analysis failed: {str(e)}",
+            f"❌ 分析失败：{str(e)}",
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(), gr.update(), gr.update(),
             gr.update(), gr.update(), gr.update(), gr.update(),
@@ -1016,7 +1016,7 @@ def run_paper_reading_workflow(pr_session_state):
 
 
 def update_innovation_display(pr_session_state, direction):
-    """Update innovation display for Agent2"""
+    """更新 Agent2 创新点展示"""
     if not pr_session_state:
         return pr_session_state, gr.update(), gr.update()
     
@@ -1037,12 +1037,12 @@ def update_innovation_display(pr_session_state, direction):
     return (
         pr_session_state,
         current_text,
-        f"Innovation {current_idx + 1}/{len(innovations)}"
+        f"创新点 {current_idx + 1}/{len(innovations)}"
     )
 
 
 def update_keyword_display(pr_session_state, direction):
-    """Update keyword display for Agent2"""
+    """更新 Agent2 关键词展示"""
     if not pr_session_state:
         return pr_session_state, gr.update(), gr.update()
     
@@ -1063,12 +1063,12 @@ def update_keyword_display(pr_session_state, direction):
     return (
         pr_session_state,
         current_text,
-        f"Keyword {current_idx + 1}/{len(keywords)}"
+        f"关键词 {current_idx + 1}/{len(keywords)}"
     )
 
 
 def update_agent3_display(pr_session_state, direction):
-    """Update Agent3 display"""
+    """更新 Agent3 展示"""
     if not pr_session_state:
         return pr_session_state, gr.update(), gr.update()
     
@@ -1089,12 +1089,12 @@ def update_agent3_display(pr_session_state, direction):
     return (
         pr_session_state,
         current_text,
-        f"Innovation Analysis {current_idx + 1}/{len(agent3_data)}"
+        f"创新点分析 {current_idx + 1}/{len(agent3_data)}"
     )
 
 
 def update_agent4_display(pr_session_state, direction):
-    """Update Agent4 display"""
+    """更新 Agent4 展示"""
     if not pr_session_state:
         return pr_session_state, gr.update(), gr.update()
     
@@ -1115,23 +1115,23 @@ def update_agent4_display(pr_session_state, direction):
     return (
         pr_session_state,
         current_text,
-        f"Application Analysis {current_idx + 1}/{len(agent4_data)}"
+        f"应用价值分析 {current_idx + 1}/{len(agent4_data)}"
     )
 
 
 
-# CSS for the application
+# 应用 CSS
 APP_CSS = """
     @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;700&display=swap');
     
-    /* Global fonts: Georgia for English, Noto Sans SC for Chinese */
+    /* 全局字体：英语使用 Georgia，中文使用 Noto Sans SC */
     * {
         font-family: Georgia, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif !important;
     }
     .prose, .prose * {
         font-family: Georgia, 'Noto Sans SC', 'PingFang SC', 'Hiragino Sans GB', sans-serif !important;
     }
-    /* Code blocks keep monospace font */
+    /* 代码块保持等宽字体 */
     code, pre, .code, pre *, code * {
         font-family: 'Consolas', 'Monaco', 'Courier New', monospace !important;
     }
@@ -1156,7 +1156,7 @@ APP_CSS = """
     }
     .strategy-preview strong {
         color: #1e293b;
-        border-radius: 4px; /* Optional: adds subtle highlight connection */
+        border-radius: 4px; /* 可选：增加轻微高亮关联 */
     }
     .strategy-preview table {
         width: 100%;
@@ -1200,7 +1200,7 @@ APP_CSS = """
         max-height: 300px;
         overflow-y: auto;
     }
-    /* Download tip animation */
+    /* 下载提示动画 */
     @keyframes pulse-glow {
         0%, 100% {
             opacity: 1;
@@ -1229,7 +1229,7 @@ APP_CSS = """
         align-items: center;
         gap: 8px;
     }
-    /* Important warning notice - single layer only */
+    /* 重要警示信息 - 单层样式 */
     .important-warning {
         background: linear-gradient(135deg, #fef2cd, #fff3cd) !important;
         border: 2px solid #ff9800 !important;
@@ -1251,7 +1251,7 @@ APP_CSS = """
         color: #5d4037 !important;
         font-weight: 500 !important;
     }
-    /* Bright download buttons */
+    /* 明亮的下载按钮 */
     #download-strategy-btn, #download-rebuttal-btn {
         background: linear-gradient(135deg, #22c55e, #16a34a) !important;
         border: none !important;
@@ -1269,516 +1269,55 @@ APP_CSS = """
     }
 """
 
-with gr.Blocks(title="AI Research Assistant") as demo:
+with gr.Blocks(title="AI 论文助手") as demo:
     
     session_state = gr.State(None)
     pr_session_state = gr.State(None)
     
     gr.Markdown(
         """
-        # AI Research Assistant
+        # AI 论文助手
         
-        Multiple workflows for academic paper analysis and processing.
+        面向学术论文的分析与处理流程。
         """
     )
     
     with gr.Tabs() as main_tabs:
-        with gr.TabItem("Rebuttal Assistant"):
+        with gr.TabItem("论文阅读"):
             gr.Markdown(
                 """
-                **Workflow usage process:**
-                - **Upload** - Upload your paper PDF and the review file (Supports .txt or .md format, please input the original document containing all reviewers' comments, including reviewers' IDs ; there is no need to split them manually)
-                - **Analysis** - The system will automatically analyze your paper and extract questions from the review
-                - **Review Strategy** - For each question, view the AI-generated rebuttal strategy and to-do list and referenced response snippets
-                - **Refinement** - Enter your feedback and click "Regenerate" to refine the strategy
-                - **Generate Rebuttal** - After all questions are processed, generate the final rebuttal document
-                """
-            )
-            
-            with gr.Column(visible=True) as upload_col:
-                gr.Markdown("## 📤 Configure & Upload Files")
-                
-                with gr.Group():
-            gr.Markdown("### 🔑 API Configuration")
-            
-            # Provider selection
-            provider_choice = gr.Dropdown(
-                label="LLM Provider",
-                choices=list(PROVIDER_CONFIGS.keys()),
-                value="OpenRouter",
-                info="Select your LLM provider",
-            )
-            
-            # Pre-fill API key from environment variable based on provider
-            default_provider = "OpenRouter"
-            env_api_key = get_api_key_for_provider(default_provider)
-            api_key_input = gr.Textbox(
-                label=PROVIDER_CONFIGS[default_provider]["label"],
-                placeholder=f"Please enter your API Key ({PROVIDER_CONFIGS[default_provider]['placeholder']})",
-                value=env_api_key,
-                type="password",
-                info="Your API key will not be stored, only used for this session." + (" (Loaded from .env)" if env_api_key else "")
-            )
-            
-            def on_provider_change(provider):
-                """Update API key field and model choices when provider changes"""
-                config = PROVIDER_CONFIGS.get(provider, PROVIDER_CONFIGS["OpenRouter"])
-                env_key = get_api_key_for_provider(provider)
-                model_choices = MODEL_CHOICES_BY_PROVIDER.get(provider, MODEL_CHOICES_BY_PROVIDER["OpenRouter"])
-                default_model = get_default_model_for_provider(provider)
-                
-                return (
-                    gr.update(
-                        label=config["label"],
-                        placeholder=f"Please enter your API Key ({config['placeholder']})",
-                        value=env_key,
-                        info="Your API key will not be stored, only used for this session." + (" (Loaded from .env)" if env_key else "")
-                    ),
-                    gr.update(
-                        choices=list(model_choices.keys()),
-                        value=default_model,
-                    ),
-                )
-                
-                gr.Markdown("---")
-                
-                with gr.Group():
-                    gr.Markdown("### 🤖 Model Selection")
-                    with gr.Row():
-                        model_choice = gr.Dropdown(
-                            label="Select Model",
-                            choices=list(MODEL_CHOICES_BY_PROVIDER["OpenRouter"].keys()),
-                            value="Gemini 3 Flash",
-                            info="Choose the LLM model to use",
-                            scale=2,
-                        )
-                        custom_model_input = gr.Textbox(
-                            label="Custom Model Name",
-                            placeholder="Enter model name",
-                            visible=False,
-                            scale=3,
-                        )
-                    
-                    def toggle_custom_model(choice):
-                        return gr.update(visible=(choice == "Other models"))
-                    
-                    model_choice.change(
-                        fn=toggle_custom_model,
-                        inputs=[model_choice],
-                        outputs=[custom_model_input],
-                    )
-                    
-                    # Connect provider change to update API key and model choices
-                    provider_choice.change(
-                        fn=on_provider_change,
-                        inputs=[provider_choice],
-                        outputs=[api_key_input, model_choice],
-                    )
-                
-                gr.Markdown("---")
-                
-                gr.Markdown("### 📄 Upload Files")
-                with gr.Row():
-                    pdf_input = gr.File(
-                        label="📄 Paper PDF", 
-                        file_types=[".pdf"],
-                        file_count="single",
-                    )
-                    review_input = gr.File(
-                        label="📝 Review File(.md / .txt)", 
-                        file_types=[".md", ".txt"],
-                        file_count="single",
-                    )
-                
-                upload_status = gr.Markdown("")
-                
-                start_btn = gr.Button(
-                    "🚀 Submit & Start Analysis", 
-                    variant="primary",
-                    size="lg",
-                )
-                
-                gr.Markdown("---")
-                
-                with gr.Group():
-                    gr.Markdown("### 🔄 Resume Previous Session")
-                    gr.Markdown(
-                        "*If you refreshed the page during processing, you can resume your session here. "
-                        "Make sure to enter your API Key above first.*"
-                    )
-                    with gr.Row():
-                        resume_session_dropdown = gr.Dropdown(
-                            label="Select Session to Resume",
-                            choices=[],
-                            value=None,
-                            interactive=True,
-                            scale=3,
-                        )
-                        refresh_sessions_btn = gr.Button(
-                            "🔄 Refresh List",
-                            variant="secondary",
-                            size="sm",
-                            scale=1,
-                        )
-                    resume_status = gr.Markdown("")
-                    resume_btn = gr.Button(
-                        "▶️ Resume Selected Session",
-                        variant="secondary",
-                        size="lg",
-                    )
-            
-            with gr.Column(visible=False) as loading_col:
-                gr.Markdown("## ⏳ Analyzing...")
-                loading_status = gr.Markdown("Initializing...")
-                
-                gr.Markdown(
-                    """
-                    > 📊 **Analysis Process:**
-                    > 1. Convert PDF to Markdown 
-                    > 2. AI reads and summarizes the paper 
-                    > 3. AI extracts questions from the review 
-                    > 4. Process all questions in parallel 
-                    > 5. Present results for your review 
-                    
-                    🚀 **All questions will be processed in parallel**, so you can quickly review and refine each one after completion!
-
-                    After all questions are processed, you can generate the referenced final rebuttal document.
-                    
-                    This may take about 15 minutes (use gpu) or up to 1 hour (CPU), please be patient...
-                    """
-                )
-                
-                gr.Markdown("### 📋 Live Logs")
-                log_display = gr.Textbox(
-                    value="Waiting to start...",
-                    label="",
-                    lines=10,
-                    max_lines=15,
-                    interactive=False,
-                    elem_id="log-display",
-                )
-
-                log_timer = gr.Timer(value=1.5, active=False)
-            
-                    with gr.Column(visible=False) as interact_col:
-                with gr.Row():
-                    progress_info = gr.Markdown("### Question 1 / N")
-                    processing_status = gr.Markdown("", elem_id="processing-status")
-                
-                gr.Markdown(
-                    """
-                    > 📘 **Quick Reference:**
-                    > - **Strategy** — High-level approach and key arguments to address this reviewer question
-                    > - **To-Do List** — Concrete action items (experiments, analysis, writing) to implement the strategy
-                    > - **Response Draft** — Snippets you can refer to when writing your rebuttal
-                    """
-                )
-                
-                with gr.Group():
-                    gr.Markdown("#### 🔍 Reviewer's Question")
-                    question_display = gr.Markdown(elem_classes=["question-box"])
-                
-                with gr.Row():
-                    with gr.Column(scale=3):
-                        gr.Markdown("#### 💡 Rebuttal Strategy & To-Do List Rebuttal")
-                        
-                        with gr.Tabs():
-                            with gr.TabItem("📖 Preview"):
-                                gr.Markdown("*Rendered strategy content below:*")
-                                strategy_preview = gr.Markdown(elem_classes=["strategy-preview"])
-                            
-                            with gr.TabItem("✏️ Edit"):
-                                gr.Markdown("*Edit raw Markdown, switch back to Preview to see results:*")
-                                strategy_edit = gr.Textbox(
-                                    label="",
-                                    lines=20,
-                                    max_lines=40,
-                                    elem_classes=["strategy-edit"],
-                                )
-                        
-                        revision_info = gr.Markdown("📝 Revisions have been modified 0 times")
-                    
-                    with gr.Column(scale=1):
-                        gr.Markdown("#### 📜 Revision History")
-                        feedback_history_display = gr.Markdown(
-                            "*No revisions yet*",
-                            elem_id="feedback-history",
-                        )
-                
-                gr.Markdown("---")
-                gr.Markdown("#### 💬 Human Feedback")
-                gr.Markdown("*Enter your feedback, and the AI will adjust the strategy accordingly. You can revise multiple times until satisfied.*")
-                
-                with gr.Row():
-                    feedback_input = gr.Textbox(
-                        label="Feedback", 
-                        placeholder="For example:\n• Please add more discussion on experimental data\n• This strategy is too general, needs more specific suggestions\n• Please include a comparison with baseline methods",
-                        lines=4,
-                        scale=4,
-                        elem_classes=["feedback-box"],
-                    )
-                    with gr.Column(scale=1):
-                        regenerate_btn = gr.Button(
-                            "🔄 Regenerate", 
-                            variant="secondary",
-                            size="lg",
-                        )
-                        gr.Markdown("*AI will revise strategy\nbased on your feedback*", elem_id="regen-hint")
-                
-                gr.Markdown("---")
-                
-                with gr.Row():
-                    skip_btn = gr.Button(
-                        "⏭️ Skip This Question",
-                        variant="secondary",
-                        size="lg",
-                    )
-                    confirm_btn = gr.Button(
-                        "✅ Satisfied, Next Question", 
-                        variant="primary",
-                        size="lg",
-                    )
-            
-                    with gr.Column(visible=False) as result_col:
-                gr.Markdown("## 🎉 Complete!")
-                gr.Markdown(
-                    """
-                    All questions have been processed. Here are the generated results:
-                    
-                    This page contains **two modules**:
-                    1. **Strategy Summary** - Contains rebuttal strategies, To-Do Lists, and draft response snippets for all questions.
-                    2. **Final Reference Rebuttal** - A complete rebuttal document for your reference.
-                    """
-                )
-                
-                gr.Markdown(
-                    """
-                    ⚠️ **IMPORTANT NOTICE:** The Final Reference Rebuttal contains **LLM-estimated numerical values marked with asterisks (*)**. 
-                    These estimated values are placeholders and **MUST be replaced with actual experimental results**.
-                    Please carefully review and verify all data.
-                    """,
-                    elem_classes=["important-warning"]
-                )
-                
-                with gr.Tabs():
-                    with gr.TabItem("📝 Strategy Summary"):
-                        gr.Markdown("*Contains rebuttal strategies, To-Do Lists, and draft response snippets for all questions.*")
-                        with gr.Tabs():
-                            with gr.TabItem("📖 Preview"):
-                                strategy_summary_preview = gr.Markdown(elem_classes=["strategy-preview"])
-                            with gr.TabItem("✏️ Raw Text"):
-                                strategy_summary_output = gr.Textbox(
-                                    label="Rebuttal Strategy & To-Do List", 
-                                    lines=20,
-                                    max_lines=40,
-                                )
-                    
-                    with gr.TabItem("📄 Final Reference Rebuttal"):
-                        gr.Markdown(
-                            """
-                            *The complete reference rebuttal document.*
-                            
-                            > ⚠️ **Note:** Numerical values marked with **asterisks (*)** are LLM-estimated placeholders.
-                            > You **MUST supplement these with actual experimental data** .
-                            """
-                        )
-                        with gr.Tabs():
-                            with gr.TabItem("📖 Preview"):
-                                final_preview = gr.Markdown(elem_classes=["strategy-preview"])
-                            with gr.TabItem("✏️ Raw Text"):
-                                final_output = gr.Textbox(
-                                    label="Final Reference Rebuttal", 
-                                    lines=20,
-                                    max_lines=40,
-                                )
-                
-                gr.Markdown("---")
-                gr.Markdown("### 📥 Download Files")
-                
-                with gr.Row():
-                    download_strategy_btn = gr.Button(
-                        "📥 Download Strategy Summary", 
-                        variant="primary",
-                        size="lg",
-                        elem_id="download-strategy-btn",
-                    )
-                    download_rebuttal_btn = gr.Button(
-                        "📥 Download Reference Rebuttal", 
-                        variant="primary",
-                        size="lg",
-                        elem_id="download-rebuttal-btn",
-                    )
-                    restart_btn = gr.Button(
-                        "🔄 Start Over", 
-                        variant="secondary",
-                        size="lg",
-                    )
-                
-                download_strategy_file = gr.File(label="Strategy File", visible=False)
-                download_rebuttal_file = gr.File(label="Rebuttal File", visible=False)
-                
-                gr.Markdown(
-                    "💡 **Tip:** After clicking the download button, click the **file size link on the right** ➡️ of the file component to start download.",
-                    elem_classes=["download-tip"]
-                )
-            
-            start_btn.click(
-        fn=start_analysis,
-        inputs=[pdf_input, review_input, provider_choice, api_key_input, model_choice, custom_model_input],
-        outputs=[
-            upload_col, loading_col, interact_col, result_col,
-            session_state, upload_status, log_timer,
-        ],
-    ).then(
-        fn=run_initial_analysis,
-        inputs=[session_state],
-        outputs=[
-            upload_col, loading_col, interact_col, result_col,
-            session_state, loading_status,
-            progress_info, question_display, strategy_preview, strategy_edit, feedback_input,
-            revision_info, regenerate_btn, feedback_history_display, log_timer,
-            confirm_btn,
-        ],
-    )
-
-            refresh_sessions_btn.click(
-                fn=refresh_session_list,
-                inputs=[],
-                outputs=[resume_session_dropdown, resume_status],
-            )
-            
-            resume_btn.click(
-                fn=resume_session,
-                inputs=[resume_session_dropdown, provider_choice, api_key_input],
-                outputs=[
-                    upload_col, loading_col, interact_col, result_col,
-                    session_state, upload_status,
-                    progress_info, question_display, strategy_preview, strategy_edit, feedback_input,
-                    revision_info, regenerate_btn, feedback_history_display,
-                    confirm_btn,
-                ],
-            )
-
-            log_timer.tick(
-                fn=poll_logs,
-                inputs=[session_state],
-                outputs=[log_display, session_state],
-            )
-            
-            regenerate_btn.click(
-                fn=regenerate_strategy,
-                inputs=[feedback_input, session_state],
-                outputs=[strategy_preview, strategy_edit, feedback_input, revision_info, feedback_history_display, session_state],
-            )
-            
-            def sync_preview(text):
-                return text
-            
-            strategy_edit.blur(
-                fn=sync_preview,
-                inputs=[strategy_edit],
-                outputs=[strategy_preview],
-            )
-            
-            confirm_btn.click(
-                fn=confirm_and_next,
-                inputs=[strategy_edit, session_state],
-                outputs=[
-                    interact_col, result_col, session_state,
-                    progress_info, question_display, strategy_preview, strategy_edit, feedback_input,
-                    revision_info, regenerate_btn, feedback_history_display,
-                    strategy_summary_preview, strategy_summary_output, final_preview, final_output,
-                    confirm_btn,
-                ],
-            )
-            
-            skip_btn.click(
-                fn=skip_question,
-                inputs=[session_state],
-                outputs=[
-                    interact_col, result_col, session_state,
-                    progress_info, question_display, strategy_preview, strategy_edit, feedback_input,
-                    revision_info, regenerate_btn, feedback_history_display,
-                    strategy_summary_preview, strategy_summary_output, final_preview, final_output,
-                    confirm_btn,
-                ],
-            )
-            
-            restart_btn.click(
-                fn=restart_session,
-                inputs=[],
-                outputs=[
-                    upload_col, loading_col, interact_col, result_col,
-                    session_state, upload_status,
-                    pdf_input, review_input,
-                ],
-            )
-            
-            def download_strategy(strategy_text):
-                if not strategy_text:
-                    return gr.update()
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='_strategy.md', delete=False, encoding='utf-8') as f:
-                    f.write("# Rebuttal Strategy & To-Do List \n\n")
-                    f.write(strategy_text)
-                    return gr.update(value=f.name, visible=True)
-            
-            download_strategy_btn.click(
-                fn=download_strategy,
-                inputs=[strategy_summary_output],
-                outputs=[download_strategy_file],
-            )
-            
-            def download_rebuttal(final_text):
-                if not final_text:
-                    return gr.update()
-                import tempfile
-                with tempfile.NamedTemporaryFile(mode='w', suffix='_rebuttal.md', delete=False, encoding='utf-8') as f:
-                    f.write("# Final Rebuttal\n\n")
-                    f.write(final_text)
-                    return gr.update(value=f.name, visible=True)
-            
-            download_rebuttal_btn.click(
-                fn=download_rebuttal,
-                inputs=[final_output],
-                outputs=[download_rebuttal_file],
-            )
-        
-        with gr.TabItem("Paper Reading"):
-            gr.Markdown(
-                """
-                **Paper Reading Workflow:**
-                - **Upload** - Upload your paper PDF and research field description (.md file)
-                - **Analysis** - The system will analyze the paper through 5 agents:
-                  1. Extract core motivation and innovations
-                  2. Refine and verify the analysis
-                  3. Analyze each innovation in detail
-                  4. Analyze application value in your research field
-                  5. Evaluate writing quality
-                - **Review** - Browse the analysis results with navigation controls
+                **论文阅读流程：**
+                - **上传** - 上传论文 PDF 与研究领域描述（.md 文件）
+                - **分析** - 系统通过 5 个智能体分析论文：
+                  1. 提取核心动机与创新点
+                  2. 细化并验证分析结果
+                  3. 逐条深入分析创新点
+                  4. 在研究领域内分析应用价值
+                  5. 评估写作质量
+                - **查看** - 使用导航控件浏览分析结果
                 """
             )
             
             with gr.Column(visible=True) as pr_upload_col:
-                gr.Markdown("## 📤 Configure & Upload Files")
+                gr.Markdown("## 📤 配置并上传文件")
                 
                 with gr.Group():
-                    gr.Markdown("### 🔑 API Configuration")
+                    gr.Markdown("### 🔑 API 配置")
                     
                     pr_provider_choice = gr.Dropdown(
-                        label="LLM Provider",
+                        label="LLM 供应商",
                         choices=list(PROVIDER_CONFIGS.keys()),
                         value="OpenRouter",
-                        info="Select your LLM provider",
+                        info="请选择你的 LLM 供应商",
                     )
                     
                     pr_env_api_key = get_api_key_for_provider("OpenRouter")
                     pr_api_key_input = gr.Textbox(
                         label=PROVIDER_CONFIGS["OpenRouter"]["label"],
-                        placeholder=f"Please enter your API Key ({PROVIDER_CONFIGS['OpenRouter']['placeholder']})",
+                        placeholder=f"请输入 API 密钥（{PROVIDER_CONFIGS['OpenRouter']['placeholder']}）",
                         value=pr_env_api_key,
                         type="password",
-                        info="Your API key will not be stored, only used for this session." + (" (Loaded from .env)" if pr_env_api_key else "")
+                        info="API 密钥不会被存储，仅用于本次会话。" + ("（已从 .env 载入）" if pr_env_api_key else "")
                     )
                     
                     def pr_on_provider_change(provider):
@@ -1790,9 +1329,9 @@ with gr.Blocks(title="AI Research Assistant") as demo:
                         return (
                             gr.update(
                                 label=config["label"],
-                                placeholder=f"Please enter your API Key ({config['placeholder']})",
+                                placeholder=f"请输入 API 密钥（{config['placeholder']}）",
                                 value=env_key,
-                                info="Your API key will not be stored, only used for this session." + (" (Loaded from .env)" if env_key else "")
+                                info="API 密钥不会被存储，仅用于本次会话。" + ("（已从 .env 载入）" if env_key else "")
                             ),
                             gr.update(
                                 choices=list(model_choices.keys()),
@@ -1803,24 +1342,24 @@ with gr.Blocks(title="AI Research Assistant") as demo:
                 gr.Markdown("---")
                 
                 with gr.Group():
-                    gr.Markdown("### 🤖 Model Selection")
+                    gr.Markdown("### 🤖 模型选择")
                     with gr.Row():
                         pr_model_choice = gr.Dropdown(
-                            label="Select Model",
+                            label="选择模型",
                             choices=list(MODEL_CHOICES_BY_PROVIDER["OpenRouter"].keys()),
                             value="Gemini 3 Flash",
-                            info="Choose the LLM model to use",
+                            info="选择要使用的 LLM 模型",
                             scale=2,
                         )
                         pr_custom_model_input = gr.Textbox(
-                            label="Custom Model Name",
-                            placeholder="Enter model name",
+                            label="自定义模型名称",
+                            placeholder="请输入模型名称",
                             visible=False,
                             scale=3,
                         )
                     
                     def pr_toggle_custom_model(choice):
-                        return gr.update(visible=(choice == "Other models"))
+                        return gr.update(visible=(choice == "其他模型"))
                     
                     pr_model_choice.change(
                         fn=pr_toggle_custom_model,
@@ -1836,50 +1375,49 @@ with gr.Blocks(title="AI Research Assistant") as demo:
                 
                 gr.Markdown("---")
                 
-                gr.Markdown("### 📄 Upload Files")
+                gr.Markdown("### 📄 上传文件")
                 with gr.Row():
                     pr_pdf_input = gr.File(
-                        label="📄 Paper PDF", 
+                        label="📄 论文 PDF",
                         file_types=[".pdf"],
                         file_count="single",
                     )
                     pr_research_field_input = gr.File(
-                        label="📝 Research Field Description(.md)", 
+                        label="📝 研究领域描述（.md）",
                         file_types=[".md"],
                         file_count="single",
-                        info="Upload a markdown file describing your research field"
                     )
                 
                 pr_upload_status = gr.Markdown("")
                 
                 pr_start_btn = gr.Button(
-                    "🚀 Submit & Start Analysis", 
+                    "🚀 提交并开始分析",
                     variant="primary",
                     size="lg",
                 )
             
             with gr.Column(visible=False) as pr_loading_col:
-                gr.Markdown("## ⏳ Analyzing...")
-                pr_loading_status = gr.Markdown("Initializing...")
+                gr.Markdown("## ⏳ 正在分析...")
+                pr_loading_status = gr.Markdown("初始化中...")
                 
                 gr.Markdown(
                     """
-                    > 📊 **Analysis Process:**
-                    > 1. Convert PDF to Markdown 
-                    > 2. Agent1: Extract core motivation and innovations
-                    > 3. Agent2: Refine and verify the analysis
-                    > 4. Agent3: Analyze each innovation in detail (parallel)
-                    > 5. Agent4: Analyze application value in your research field (parallel)
-                    > 6. Agent5: Evaluate writing quality
-                    > 7. Present results for your review
+                    > 📊 **分析流程：**
+                    > 1. 将 PDF 转换为 Markdown
+                    > 2. Agent1：提取核心动机与创新点
+                    > 3. Agent2：细化并验证分析
+                    > 4. Agent3：逐条深入分析创新点（并行）
+                    > 5. Agent4：分析在研究领域的应用价值（并行）
+                    > 6. Agent5：评估写作质量
+                    > 7. 输出结果供你查看
                     
-                    This may take several minutes, please be patient...
+                    这可能需要几分钟，请耐心等待...
                     """
                 )
                 
-                gr.Markdown("### 📋 Live Logs")
+                gr.Markdown("### 📋 实时日志")
                 pr_log_display = gr.Textbox(
-                    value="Waiting to start...",
+                    value="等待开始...",
                     label="",
                     lines=10,
                     max_lines=15,
@@ -1890,77 +1428,77 @@ with gr.Blocks(title="AI Research Assistant") as demo:
                 pr_log_timer = gr.Timer(value=1.5, active=False)
             
             with gr.Column(visible=False) as pr_result_col:
-                gr.Markdown("## 📊 Analysis Results")
+                gr.Markdown("## 📊 分析结果")
                 
-                gr.Markdown("### Agent1: Core Summary")
+                gr.Markdown("### Agent1：核心摘要")
                 pr_agent1_output = gr.Textbox(
-                    label="Agent1 Output (JSON)",
+                    label="Agent1 输出（JSON）",
                     lines=8,
                     max_lines=15,
                     interactive=False,
                 )
                 
                 gr.Markdown("---")
-                gr.Markdown("### Agent2: Full Summary & Innovations")
+                gr.Markdown("### Agent2：完整摘要与创新点")
                 pr_agent2_summary = gr.Textbox(
-                    label="Full Summary",
+                    label="完整摘要",
                     lines=6,
                     max_lines=10,
                     interactive=False,
                 )
                 
                 with gr.Row():
-                    pr_innovation_prev_btn = gr.Button("◀ Previous", size="sm")
-                    pr_innovation_index = gr.Markdown("Innovation 1/1")
-                    pr_innovation_next_btn = gr.Button("Next ▶", size="sm")
+                    pr_innovation_prev_btn = gr.Button("◀ 上一条", size="sm")
+                    pr_innovation_index = gr.Markdown("创新点 1/1")
+                    pr_innovation_next_btn = gr.Button("下一条 ▶", size="sm")
                 pr_agent2_innovation = gr.Textbox(
-                    label="Current Innovation",
+                    label="当前创新点",
                     lines=4,
                     max_lines=8,
                     interactive=False,
                 )
                 
                 with gr.Row():
-                    pr_keyword_prev_btn = gr.Button("◀ Previous", size="sm")
-                    pr_keyword_index = gr.Markdown("Keyword 1/1")
-                    pr_keyword_next_btn = gr.Button("Next ▶", size="sm")
+                    pr_keyword_prev_btn = gr.Button("◀ 上一条", size="sm")
+                    pr_keyword_index = gr.Markdown("关键词 1/1")
+                    pr_keyword_next_btn = gr.Button("下一条 ▶", size="sm")
                 pr_agent2_keyword = gr.Textbox(
-                    label="Current Keyword",
+                    label="当前关键词",
                     lines=2,
                     max_lines=4,
                     interactive=False,
                 )
                 
                 gr.Markdown("---")
-                gr.Markdown("### Agent3: Innovation Analysis")
+                gr.Markdown("### Agent3：创新点分析")
                 with gr.Row():
-                    pr_agent3_prev_btn = gr.Button("◀ Previous", size="sm")
-                    pr_agent3_index = gr.Markdown("Innovation Analysis 1/1")
-                    pr_agent3_next_btn = gr.Button("Next ▶", size="sm")
+                    pr_agent3_prev_btn = gr.Button("◀ 上一条", size="sm")
+                    pr_agent3_index = gr.Markdown("创新点分析 1/1")
+                    pr_agent3_next_btn = gr.Button("下一条 ▶", size="sm")
                 pr_agent3_output = gr.Textbox(
-                    label="Current Innovation Analysis",
+                    label="当前创新点分析",
                     lines=12,
                     max_lines=20,
                     interactive=False,
                 )
                 
                 gr.Markdown("---")
-                gr.Markdown("### Agent4: Application Analysis")
+                gr.Markdown("### Agent4：应用价值分析")
                 with gr.Row():
-                    pr_agent4_prev_btn = gr.Button("◀ Previous", size="sm")
-                    pr_agent4_index = gr.Markdown("Application Analysis 1/1")
-                    pr_agent4_next_btn = gr.Button("Next ▶", size="sm")
+                    pr_agent4_prev_btn = gr.Button("◀ 上一条", size="sm")
+                    pr_agent4_index = gr.Markdown("应用价值分析 1/1")
+                    pr_agent4_next_btn = gr.Button("下一条 ▶", size="sm")
                 pr_agent4_output = gr.Textbox(
-                    label="Current Application Analysis",
+                    label="当前应用价值分析",
                     lines=12,
                     max_lines=20,
                     interactive=False,
                 )
                 
                 gr.Markdown("---")
-                gr.Markdown("### Agent5: Writing Evaluation")
+                gr.Markdown("### Agent5：写作质量评估")
                 pr_agent5_output = gr.Textbox(
-                    label="Agent5 Output (JSON)",
+                    label="Agent5 输出（JSON）",
                     lines=8,
                     max_lines=15,
                     interactive=False,
@@ -2051,21 +1589,21 @@ with gr.Blocks(title="AI Research Assistant") as demo:
 if __name__ == "__main__":
     import argparse
     
-    parser = argparse.ArgumentParser(description="AI Rebuttal Assistant")
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="Server host address")
-    parser.add_argument("--port", type=int, default=7860, help="Server port")
-    parser.add_argument("--share", action="store_true", help="Create public link")
+    parser = argparse.ArgumentParser(description="AI 论文助手")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="服务器主机地址")
+    parser.add_argument("--port", type=int, default=7860, help="服务器端口")
+    parser.add_argument("--share", action="store_true", help="创建公开链接")
     parser.add_argument("--device", type=str, default="cpu", choices=["cpu", "cuda"], 
-                        help="Device for docling PDF processing (cpu or cuda)")
+                        help="docling PDF 处理设备（cpu 或 cuda）")
     
     args = parser.parse_args()
     
     device_used = os.environ.get("DOCLING_DEVICE", "cpu")
     
-    print(f"\n🚀 Starting AI Rebuttal Assistant")
-    print(f"   URL: http://localhost:{args.port}")
-    print(f"   Device: {device_used.upper()}")
-    print(f"   Share: {'Yes' if args.share else 'No'}\n")
+    print(f"\n🚀 启动 AI 论文助手")
+    print(f"   地址: http://localhost:{args.port}")
+    print(f"   设备: {device_used.upper()}")
+    print(f"   共享: {'是' if args.share else '否'}\n")
     
     demo.launch(
         server_name=args.host,

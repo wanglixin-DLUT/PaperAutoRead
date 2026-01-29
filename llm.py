@@ -1,8 +1,16 @@
 import os
 import json
 import time
+import logging
 from datetime import datetime
 from typing import Optional, Tuple, Dict, List
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    datefmt='%Y-%m-%d %H:%M:%S'
+)
 
 # Provider configurations: base_url and env_var for API key
 PROVIDER_CONFIGS: Dict[str, Dict[str, str]] = {
@@ -141,13 +149,12 @@ class LLMClient:
             if self.provider == "openrouter":
                 extra_headers = {
                     "HTTP-Referer": site_url or "http://localhost",
-                    "X-Title": site_name or "Rebuttal Assistant",
+                    "X-Title": site_name or "PaperAutoRead Assistant",
                 }
 
             self._http_client = httpx.Client(
                 trust_env=True, 
-                timeout=request_timeout,
-                headers=extra_headers
+                timeout=httpx.Timeout(request_timeout, connect=30.0),
             )
             
 
@@ -159,6 +166,7 @@ class LLMClient:
                 base_url=effective_base_url,
                 api_key=api_key,
                 http_client=self._http_client,
+                default_headers=extra_headers,
             )
 
     def generate(
@@ -180,6 +188,10 @@ class LLMClient:
         
         for attempt in range(self.max_retries + 1):
             try:
+                # Log prompt sending
+                prompt_preview = input_text[:200] + "..." if len(input_text) > 200 else input_text
+                logging.info(f"[{self.current_agent_name}] Sending prompt to {self.provider} ({model_name}): {prompt_preview}")
+                
                 if self.provider == "gemini":
                     # Use native Gemini SDK
                     final_text, reasoning_text = self._generate_gemini(
@@ -217,7 +229,7 @@ class LLMClient:
         model_name: str,
         temperature: float,
     ) -> Tuple[str, str]:
-        """Generate using native Google Generative AI SDK"""
+        """Generate using native Google Generative AI SDK with streaming"""
         # Create model with system instruction
         generation_config = {
             "temperature": temperature,
@@ -229,18 +241,44 @@ class LLMClient:
             generation_config=generation_config,
         )
         
-        response = model.generate_content(input_text)
+        # Use streaming response
+        response_stream = model.generate_content(input_text, stream=True)
         
         final_text = ""
-        if response.text:
-            final_text = response.text
+        accumulated_tokens = 0
+        last_print_token_count = 0
+        # Rough estimation: ~4 characters per token for Chinese/English mixed text
+        chars_per_token = 4
+        usage_metadata = None
+        
+        for chunk in response_stream:
+            if chunk.text:
+                content = chunk.text
+                final_text += content
+                
+                # Estimate token count (rough approximation)
+                accumulated_tokens += len(content) / chars_per_token
+                
+                # Print progress every 200 tokens
+                if int(accumulated_tokens) // 200 > last_print_token_count // 200:
+                    print(f"\n[{self.current_agent_name}] Progress ({int(accumulated_tokens)} tokens):")
+                    print(f"{final_text[-500:]}\n")  # Print last 500 characters
+                    last_print_token_count = int(accumulated_tokens)
+            
+            # Try to get usage metadata from the last chunk
+            if hasattr(chunk, "usage_metadata"):
+                usage_metadata = chunk.usage_metadata
+        
+        # Print final content if there's remaining content not printed (at least 50 tokens difference)
+        if accumulated_tokens - last_print_token_count >= 50:
+            print(f"\n[{self.current_agent_name}] Final content ({int(accumulated_tokens)} tokens):")
+            print(f"{final_text[-500:]}\n")
         
         # Track token usage if available
-        if self.token_tracker and hasattr(response, "usage_metadata"):
-            usage = response.usage_metadata
-            prompt_tokens = getattr(usage, "prompt_token_count", 0)
-            completion_tokens = getattr(usage, "candidates_token_count", 0)
-            total_tokens = getattr(usage, "total_token_count", 0)
+        if self.token_tracker and usage_metadata:
+            prompt_tokens = getattr(usage_metadata, "prompt_token_count", 0)
+            completion_tokens = getattr(usage_metadata, "candidates_token_count", 0)
+            total_tokens = getattr(usage_metadata, "total_token_count", 0)
             
             self.token_tracker.add_record(
                 provider="gemini",
@@ -251,6 +289,21 @@ class LLMClient:
                 agent_name=self.current_agent_name
             )
             print(f"[Token] {self.current_agent_name}: in={prompt_tokens}, out={completion_tokens}")
+        elif self.token_tracker:
+            # Fallback: estimate tokens if usage_metadata not available
+            prompt_tokens = len((instructions or "") + input_text) // chars_per_token
+            completion_tokens = len(final_text) // chars_per_token
+            total_tokens = prompt_tokens + completion_tokens
+            
+            self.token_tracker.add_record(
+                provider="gemini",
+                model=model_name,
+                prompt_tokens=int(prompt_tokens),
+                completion_tokens=int(completion_tokens),
+                total_tokens=int(total_tokens),
+                agent_name=self.current_agent_name
+            )
+            print(f"[Token] {self.current_agent_name}: in={int(prompt_tokens)}, out={int(completion_tokens)}")
         
         return final_text, ""
     
@@ -261,41 +314,76 @@ class LLMClient:
         model_name: str,
         temperature: float,
     ) -> Tuple[str, str]:
-        """Generate using OpenAI-compatible API"""
+        """Generate using OpenAI-compatible API with streaming"""
         messages = [
             {"role": "system", "content": (instructions or "You are a helpful AI assistant.")},
             {"role": "user", "content": input_text},
         ]
         
-        response = self._client.chat.completions.create(
+        # Use streaming response
+        stream = self._client.chat.completions.create(
             model=model_name,
             messages=messages,
             temperature=temperature,
-            stream=False,
+            stream=True,
         )
         
         final_text = ""
-        if getattr(response, "choices", None):
-            choice0 = response.choices[0]
-            message = getattr(choice0, "message", None)
-            if message is not None:
-                final_text = getattr(message, "content", None) or ""
+        accumulated_tokens = 0
+        last_print_token_count = 0
+        # Rough estimation: ~4 characters per token for Chinese/English mixed text
+        chars_per_token = 4
+        usage_info = None
+        
+        for chunk in stream:
+            if not chunk.choices:
+                continue
+            
+            # Try to get usage information from chunk (some providers include it)
+            if hasattr(chunk, "usage") and chunk.usage:
+                usage_info = chunk.usage
+                
+            delta = chunk.choices[0].delta
+            if hasattr(delta, "content") and delta.content:
+                content = delta.content
+                final_text += content
+                
+                # Estimate token count (rough approximation)
+                accumulated_tokens += len(content) / chars_per_token
+                
+                # Print progress every 200 tokens
+                if int(accumulated_tokens) // 200 > last_print_token_count // 200:
+                    print(f"\n[{self.current_agent_name}] Progress ({int(accumulated_tokens)} tokens):")
+                    print(f"{final_text[-500:]}\n")  # Print last 500 characters
+                    last_print_token_count = int(accumulated_tokens)
+        
+        # Print final content if there's remaining content not printed (at least 50 tokens difference)
+        if accumulated_tokens - last_print_token_count >= 50:
+            print(f"\n[{self.current_agent_name}] Final content ({int(accumulated_tokens)} tokens):")
+            print(f"{final_text[-500:]}\n")
 
-        if self.token_tracker and hasattr(response, "usage"):
-            usage = response.usage
-            prompt_tokens = getattr(usage, "prompt_tokens", 0)
-            completion_tokens = getattr(usage, "completion_tokens", 0)
-            total_tokens = getattr(usage, "total_tokens", 0)
+        # Track token usage
+        if self.token_tracker:
+            if usage_info:
+                # Use actual usage information if available
+                prompt_tokens = getattr(usage_info, "prompt_tokens", 0)
+                completion_tokens = getattr(usage_info, "completion_tokens", 0)
+                total_tokens = getattr(usage_info, "total_tokens", 0)
+            else:
+                # Estimate tokens: prompt tokens from input, completion tokens from output
+                prompt_tokens = len((instructions or "") + input_text) // chars_per_token
+                completion_tokens = len(final_text) // chars_per_token
+                total_tokens = prompt_tokens + completion_tokens
             
             self.token_tracker.add_record(
                 provider=self.provider,
                 model=model_name,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                total_tokens=total_tokens,
+                prompt_tokens=int(prompt_tokens),
+                completion_tokens=int(completion_tokens),
+                total_tokens=int(total_tokens),
                 agent_name=self.current_agent_name
             )
-            print(f"[Token] {self.current_agent_name}: in={prompt_tokens}, out={completion_tokens}")
+            print(f"[Token] {self.current_agent_name}: in={int(prompt_tokens)}, out={int(completion_tokens)}")
 
         return final_text, ""
 
