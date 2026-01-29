@@ -1,16 +1,8 @@
 import os
 import json
 import time
-import logging
 from datetime import datetime
 from typing import Optional, Tuple, Dict, List
-
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
 
 # Provider configurations: base_url and env_var for API key
 PROVIDER_CONFIGS: Dict[str, Dict[str, str]] = {
@@ -91,7 +83,6 @@ class TokenUsageTracker:
         }
         with open(output_file, 'w', encoding='utf-8') as f:
             json.dump(export_data, f, ensure_ascii=False, indent=2)
-        print(f"Token usage statistics exported to: {output_file}")
         return output_file
     
     def print_summary(self):
@@ -188,10 +179,6 @@ class LLMClient:
         
         for attempt in range(self.max_retries + 1):
             try:
-                # Log prompt sending
-                prompt_preview = input_text[:200] + "..." if len(input_text) > 200 else input_text
-                logging.info(f"[{self.current_agent_name}] Sending prompt to {self.provider} ({model_name}): {prompt_preview}")
-                
                 if self.provider == "gemini":
                     # Use native Gemini SDK
                     final_text, reasoning_text = self._generate_gemini(
@@ -214,11 +201,7 @@ class LLMClient:
                 last_error = e
                 if attempt < self.max_retries:
                     wait_time = self.retry_delay * (2 ** attempt)  # Exponential backoff: 2s, 4s, 8s
-                    print(f"[Retry] {self.current_agent_name} attempt {attempt + 1}/{self.max_retries} failed: {type(e).__name__}")
-                    print(f"[Retry] Waiting {wait_time:.1f}s before retry...")
                     time.sleep(wait_time)
-                else:
-                    print(f"[{self.provider.upper()} Error] All {self.max_retries + 1} attempts failed: {type(e).__name__}: {e}")
         
         return f"Error calling {self.provider} after {self.max_retries + 1} attempts: {str(last_error)}", ""
     
@@ -246,7 +229,6 @@ class LLMClient:
         
         final_text = ""
         accumulated_tokens = 0
-        last_print_token_count = 0
         # Rough estimation: ~4 characters per token for Chinese/English mixed text
         chars_per_token = 4
         usage_metadata = None
@@ -259,20 +241,11 @@ class LLMClient:
                 # Estimate token count (rough approximation)
                 accumulated_tokens += len(content) / chars_per_token
                 
-                # Print progress every 200 tokens
-                if int(accumulated_tokens) // 200 > last_print_token_count // 200:
-                    print(f"\n[{self.current_agent_name}] Progress ({int(accumulated_tokens)} tokens):")
-                    print(f"{final_text[-500:]}\n")  # Print last 500 characters
-                    last_print_token_count = int(accumulated_tokens)
             
             # Try to get usage metadata from the last chunk
             if hasattr(chunk, "usage_metadata"):
                 usage_metadata = chunk.usage_metadata
         
-        # Print final content if there's remaining content not printed (at least 50 tokens difference)
-        if accumulated_tokens - last_print_token_count >= 50:
-            print(f"\n[{self.current_agent_name}] Final content ({int(accumulated_tokens)} tokens):")
-            print(f"{final_text[-500:]}\n")
         
         # Track token usage if available
         if self.token_tracker and usage_metadata:
@@ -288,7 +261,6 @@ class LLMClient:
                 total_tokens=total_tokens,
                 agent_name=self.current_agent_name
             )
-            print(f"[Token] {self.current_agent_name}: in={prompt_tokens}, out={completion_tokens}")
         elif self.token_tracker:
             # Fallback: estimate tokens if usage_metadata not available
             prompt_tokens = len((instructions or "") + input_text) // chars_per_token
@@ -303,7 +275,6 @@ class LLMClient:
                 total_tokens=int(total_tokens),
                 agent_name=self.current_agent_name
             )
-            print(f"[Token] {self.current_agent_name}: in={int(prompt_tokens)}, out={int(completion_tokens)}")
         
         return final_text, ""
     
@@ -330,7 +301,6 @@ class LLMClient:
         
         final_text = ""
         accumulated_tokens = 0
-        last_print_token_count = 0
         # Rough estimation: ~4 characters per token for Chinese/English mixed text
         chars_per_token = 4
         usage_info = None
@@ -351,16 +321,7 @@ class LLMClient:
                 # Estimate token count (rough approximation)
                 accumulated_tokens += len(content) / chars_per_token
                 
-                # Print progress every 200 tokens
-                if int(accumulated_tokens) // 200 > last_print_token_count // 200:
-                    print(f"\n[{self.current_agent_name}] Progress ({int(accumulated_tokens)} tokens):")
-                    print(f"{final_text[-500:]}\n")  # Print last 500 characters
-                    last_print_token_count = int(accumulated_tokens)
         
-        # Print final content if there's remaining content not printed (at least 50 tokens difference)
-        if accumulated_tokens - last_print_token_count >= 50:
-            print(f"\n[{self.current_agent_name}] Final content ({int(accumulated_tokens)} tokens):")
-            print(f"{final_text[-500:]}\n")
 
         # Track token usage
         if self.token_tracker:
@@ -383,7 +344,6 @@ class LLMClient:
                 total_tokens=int(total_tokens),
                 agent_name=self.current_agent_name
             )
-            print(f"[Token] {self.current_agent_name}: in={int(prompt_tokens)}, out={int(completion_tokens)}")
 
         return final_text, ""
 
